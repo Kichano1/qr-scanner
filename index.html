@@ -10,7 +10,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="QR Scanner">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.20.0/zxing.min.js"></script>
+<!-- ZXing-js: decodificador de códigos de barras numéricos -->
+<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;600&display=swap');
 
@@ -253,26 +254,54 @@ header {
   border-color:var(--blue); border-style:solid; opacity:.7;
   transition:border-color .3s;
 }
-.bracket.tl { top:14px;left:14px;   border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
-.bracket.tr { top:14px;right:14px;  border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
-.bracket.bl { bottom:14px;left:14px;  border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
-.bracket.br { bottom:14px;right:14px; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+.bracket.tl { top:calc(37.5% - 2px); left:calc(12.5% - 2px);  border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
+.bracket.tr { top:calc(37.5% - 2px); right:calc(12.5% - 2px); border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
+.bracket.bl { bottom:calc(37.5% - 2px); left:calc(12.5% - 2px);  border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
+.bracket.br { bottom:calc(37.5% - 2px); right:calc(12.5% - 2px); border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
 .state-ok   .bracket { border-color:var(--green); }
 .state-fail .bracket { border-color:var(--red); }
 
 @keyframes scanH {
-  0%{top:15%;opacity:1} 85%{opacity:1} 100%{top:85%;opacity:0}
+  0%  { top:37.5%; opacity:1; }
+  90% { opacity:1; }
+  100%{ top:62.5%; opacity:0; }
 }
 .scan-line {
-  position:absolute; left:12%; right:12%; height:2px;
-  background:linear-gradient(90deg,transparent,var(--blue) 30%,var(--blue) 70%,transparent);
-  box-shadow:0 0 12px var(--blue),0 0 22px rgba(0,200,255,.4);
-  animation:scanH 2.2s ease-in-out infinite;
+  position:absolute; left:14%; right:14%; height:2px;
+  background:linear-gradient(90deg,transparent,var(--blue) 20%,var(--blue) 80%,transparent);
+  box-shadow:0 0 10px var(--blue),0 0 20px rgba(0,200,255,.5);
+  animation:scanH 1.6s ease-in-out infinite;
 }
+/* Dark overlay masks outside scan zone */
+.scan-mask-top, .scan-mask-bottom, .scan-mask-left, .scan-mask-right {
+  position: absolute;
+  background: rgba(6,8,16,0.72);
+  pointer-events: none;
+}
+.scan-mask-top    { top:0; left:0; right:0; height:37.5%; }
+.scan-mask-bottom { bottom:0; left:0; right:0; height:37.5%; }
+.scan-mask-left   { top:37.5%; bottom:37.5%; left:0; width:12.5%; }
+.scan-mask-right  { top:37.5%; bottom:37.5%; right:0; width:12.5%; }
+
 .reticle {
-  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:190px; height:110px;
-  border:1px dashed rgba(0,200,255,.25); border-radius:6px;
+  position:absolute;
+  top: 37.5%; bottom: 37.5%;
+  left: 12.5%; right: 12.5%;
+  border: 2px solid rgba(0,200,255,0.7);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0,200,255,0.2), inset 0 0 20px rgba(0,200,255,0.05);
+}
+/* label inside reticle */
+.reticle::after {
+  content: 'APUNTA EL CÓDIGO DE BARRAS AQUÍ';
+  position: absolute;
+  bottom: -22px; left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Orbitron', monospace;
+  font-size: .55rem;
+  letter-spacing: .12em;
+  color: rgba(0,200,255,0.6);
+  white-space: nowrap;
 }
 
 .cam-off-msg {
@@ -498,6 +527,12 @@ header {
       <canvas id="camCanvas" style="display:none"></canvas>
 
       <div class="scan-overlay" id="scanOverlay">
+        <!-- Dark masks outside scan zone -->
+        <div class="scan-mask-top"></div>
+        <div class="scan-mask-bottom"></div>
+        <div class="scan-mask-left"></div>
+        <div class="scan-mask-right"></div>
+        <!-- Corner brackets on reticle corners -->
         <div class="bracket tl"></div><div class="bracket tr"></div>
         <div class="bracket bl"></div><div class="bracket br"></div>
         <div class="scan-line" id="scanLine" style="display:none"></div>
@@ -906,59 +941,147 @@ function flipCamera() {
 }
 
 // ── DECODE LOOP ───────────────────────────────
+// Solo códigos de barras NUMÉRICOS: EAN-13, EAN-8, CODE-128, ITF, Codabar
+// Escanea únicamente la zona central (reticle) — mitad del campo visual
+
+let frameCount = 0;
+let zxingReader = null;
+
+function initZXing() {
+  try {
+    // Modern @zxing/library
+    if (typeof ZXing !== 'undefined' && ZXing.MultiFormatReader) {
+      const hints = new Map();
+      // ONLY numeric barcode formats — no QR, no Data Matrix
+      const formats = [];
+      if (ZXing.BarcodeFormat) {
+        [
+          ZXing.BarcodeFormat.EAN_13,
+          ZXing.BarcodeFormat.EAN_8,
+          ZXing.BarcodeFormat.CODE_128,
+          ZXing.BarcodeFormat.ITF,
+          ZXing.BarcodeFormat.UPC_A,
+          ZXing.BarcodeFormat.UPC_E,
+          ZXing.BarcodeFormat.CODABAR,
+          ZXing.BarcodeFormat.CODE_39,
+        ].forEach(f => { if (f !== undefined) formats.push(f); });
+      }
+      if (formats.length) hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      zxingReader = new ZXing.MultiFormatReader();
+      zxingReader.setHints(hints);
+      console.log('ZXing initialized with', formats.length, 'numeric formats');
+      return true;
+    }
+  } catch(e) { console.warn('ZXing init error:', e); }
+  return false;
+}
+
 function startDecoding() {
   const video  = document.getElementById('camVideo');
   const canvas = document.getElementById('camCanvas');
   const ctx2d  = canvas.getContext('2d', { willReadFrequently: true });
 
-  // iOS Safari 17+ supports BarcodeDetector natively — try it first
+  // Initialize ZXing once
+  if (!zxingReader) initZXing();
+
+  document.getElementById('camStatusTxt').textContent = 'ESCANEANDO...';
+
+  // ── Crop helper: extract the central 75%×25% zone (the reticle) ──
+  // Matches CSS: left 12.5%-87.5%, top 37.5%-62.5%
+  function getCroppedFrame() {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return null;
+
+    // Full frame canvas
+    canvas.width  = vw;
+    canvas.height = vh;
+    ctx2d.drawImage(video, 0, 0);
+
+    // Crop to reticle zone
+    const cx = Math.floor(vw * 0.125);
+    const cy = Math.floor(vh * 0.375);
+    const cw = Math.floor(vw * 0.75);
+    const ch = Math.floor(vh * 0.25);
+
+    return ctx2d.getImageData(cx, cy, cw, ch);
+  }
+
+  // ── Native BarcodeDetector (Android Chrome, iOS17+ Safari) ──
   if ('BarcodeDetector' in window) {
-    BarcodeDetector.getSupportedFormats().then(formats => {
-      const wanted = ['qr_code','ean_13','code_128','code_39','upc_a','upc_e','itf','pdf417','aztec','data_matrix'];
-      const supported = wanted.filter(f => formats.includes(f));
-      const det = new BarcodeDetector({ formats: supported.length ? supported : ['qr_code'] });
+    const numericFormats = ['ean_13','ean_8','code_128','itf','upc_a','upc_e','codabar','code_39','code_93'];
+
+    BarcodeDetector.getSupportedFormats().then(supported => {
+      const formats = numericFormats.filter(f => supported.includes(f));
+      const det = new BarcodeDetector({ formats: formats.length ? formats : ['ean_13','code_128'] });
+      console.log('BarcodeDetector using formats:', formats);
+
+      // Off-screen canvas for cropped region
+      const cropCanvas = document.createElement('canvas');
+      const cropCtx    = cropCanvas.getContext('2d', { willReadFrequently: true });
 
       async function loop() {
         if (!scanning) return;
-        if (video.readyState >= 2) {
+        if (video.readyState >= 2 && video.videoWidth > 0) {
           try {
-            const codes = await det.detect(video);
-            if (codes.length > 0) onDetect(codes[0].rawValue);
+            const vw = video.videoWidth, vh = video.videoHeight;
+            // Draw cropped region to separate canvas for BarcodeDetector
+            cropCanvas.width  = Math.floor(vw * 0.75);
+            cropCanvas.height = Math.floor(vh * 0.25);
+            cropCtx.drawImage(
+              video,
+              Math.floor(vw * 0.125), Math.floor(vh * 0.375),  // source x,y
+              cropCanvas.width, cropCanvas.height,               // source w,h
+              0, 0,                                              // dest x,y
+              cropCanvas.width, cropCanvas.height                // dest w,h
+            );
+            const codes = await det.detect(cropCanvas);
+            if (codes.length > 0) {
+              const val = codes[0].rawValue;
+              // Accept only numeric codes
+              if (/^\d+$/.test(val.replace(/[\s\-]/g,''))) {
+                onDetect(val);
+              }
+            }
           } catch(e) {}
         }
         animFrame = requestAnimationFrame(loop);
       }
       loop();
-    }).catch(() => useZXing());
+    }).catch(() => useZXingLoop());
     return;
   }
 
-  // Fallback: ZXing
-  useZXing();
+  // Fallback: ZXing loop
+  useZXingLoop();
 
-  function useZXing() {
-    if (typeof ZXing === 'undefined') {
-      document.getElementById('statusSub').textContent = 'Usa Safari en iPhone para escanear con cámara.';
+  function useZXingLoop() {
+    if (!zxingReader) {
+      console.warn('No decoder available');
+      document.getElementById('camStatusTxt').textContent = 'Sin decodificador';
       return;
     }
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    const reader = new ZXing.MultiFormatReader();
-    reader.setHints(hints);
 
     function loop() {
       if (!scanning) return;
+      frameCount++;
+
       if (video.readyState >= 2 && video.videoWidth > 0) {
-        canvas.width  = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx2d.drawImage(video, 0, 0);
         try {
-          const img = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
-          const lum = new ZXing.RGBLuminanceSource(img.data, canvas.width, canvas.height);
-          const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
-          const res = reader.decode(bmp);
-          if (res) onDetect(res.getText());
-        } catch(e) {}
+          const imgData = getCroppedFrame();
+          if (imgData) {
+            const lum = new ZXing.RGBLuminanceSource(imgData.data, imgData.width, imgData.height);
+            const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+            const res = zxingReader.decode(bmp);
+            if (res) {
+              const val = res.getText().replace(/[\s\-]/g,'');
+              if (/^\d+$/.test(val)) onDetect(val);
+            }
+          }
+        } catch(e) {
+          // NotFoundException is normal when no barcode in frame — ignore
+        }
       }
       animFrame = requestAnimationFrame(loop);
     }
