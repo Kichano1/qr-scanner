@@ -1,0 +1,36 @@
+{
+  "name": "QR Scanner — Rangos A·B·C",
+  "short_name": "QR Scanner",
+  "description": "Escáner de códigos QR y barras con verificación de rangos A, B y C",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060810",
+  "theme_color": "#060810",
+  "lang": "es",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["utilities", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Rango A",
+      "short_name": "Rango A",
+      "description": "Abrir con Rango A activo",
+      "url": "./index.html#A"
+    },
+    {
+      "name": "Rango B",
+      "short_name": "Rango B",
+      "description": "Abrir con Rango B activo",
+      "url": "./index.html#B"
+    },
+    {
+      "name": "Rango C",
+      "short_name": "Rango C",
+      "description": "Abrir con Rango C activo",
+      "url": "./index.html#C"
+    }
+  ]
+}
