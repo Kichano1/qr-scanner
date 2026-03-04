@@ -10,8 +10,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="QR Scanner">
-<!-- ZXing-js: decodificador de códigos de barras numéricos -->
-<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<!-- Tesseract.js: OCR para leer texto/números impresos -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;600&display=swap');
 
@@ -293,7 +293,7 @@ header {
 }
 /* label inside reticle */
 .reticle::after {
-  content: 'APUNTA EL CÓDIGO DE BARRAS AQUÍ';
+  content: 'APUNTA EL SERIAL DEL BILLETE AQUÍ';
   position: absolute;
   bottom: -22px; left: 50%;
   transform: translateX(-50%);
@@ -539,13 +539,25 @@ header {
         <div class="reticle"></div>
       </div>
 
+      <!-- OCR live reading display -->
+      <div id="ocrLive" style="
+        position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
+        background:rgba(6,8,16,0.82); border:1px solid rgba(0,200,255,0.3);
+        border-radius:6px; padding:5px 14px;
+        font-family:'Orbitron',monospace; font-size:.75rem;
+        color:rgba(0,200,255,0.9); letter-spacing:.12em;
+        pointer-events:none; white-space:nowrap;
+        max-width:90%; overflow:hidden; text-overflow:ellipsis;
+        display:none;
+      ">—</div>
+
       <div class="flash-overlay flash-ok"   id="flashOk"></div>
       <div class="flash-overlay flash-fail" id="flashFail"></div>
 
       <div class="cam-off-msg" id="camOffMsg">
         <div class="ico" id="camOffIco">📷</div>
         <span id="camOffTitle">CÁMARA DESACTIVADA</span>
-        <span id="camOffSub" style="font-size:.68rem;opacity:.55;text-align:center;padding:0 20px">Selecciona rango e inicia cámara</span>
+        <span id="camOffSub" style="font-size:.68rem;opacity:.55;text-align:center;padding:0 20px">Selecciona rango A, B o C e inicia cámara para leer seriales de billetes</span>
       </div>
     </div>
 
@@ -921,11 +933,13 @@ async function startCamera() {
 
 function stopCamera() {
   scanning = false;
+  ocrBusy  = false;
   if (animFrame) cancelAnimationFrame(animFrame);
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   const video = document.getElementById('camVideo');
   video.srcObject = null;
   document.getElementById('camOffMsg').style.display   = 'flex';
+  document.getElementById('ocrLive').style.display     = 'none';
   document.getElementById('btnStartCam').style.display = '';
   document.getElementById('btnStopCam').style.display  = 'none';
   document.getElementById('btnFlipCam').style.display  = 'none';
@@ -940,154 +954,115 @@ function flipCamera() {
   setTimeout(startCamera, 400); // small delay for iOS to release camera
 }
 
-// ── DECODE LOOP ───────────────────────────────
-// Solo códigos de barras NUMÉRICOS: EAN-13, EAN-8, CODE-128, ITF, Codabar
-// Escanea únicamente la zona central (reticle) — mitad del campo visual
+// ── OCR ENGINE — Tesseract.js ────────────────
+// Lee el serial del billete boliviano directamente de la cámara
+// Extrae solo los 9 primeros dígitos numéricos del texto detectado
 
-let frameCount = 0;
-let zxingReader = null;
+let ocrWorker   = null;
+let ocrReady    = false;
+let ocrBusy     = false;
+let frameCount  = 0;
+let cropCanvas  = null;
+let cropCtx     = null;
 
-function initZXing() {
+async function initOCR() {
   try {
-    // Modern @zxing/library
-    if (typeof ZXing !== 'undefined' && ZXing.MultiFormatReader) {
-      const hints = new Map();
-      // ONLY numeric barcode formats — no QR, no Data Matrix
-      const formats = [];
-      if (ZXing.BarcodeFormat) {
-        [
-          ZXing.BarcodeFormat.EAN_13,
-          ZXing.BarcodeFormat.EAN_8,
-          ZXing.BarcodeFormat.CODE_128,
-          ZXing.BarcodeFormat.ITF,
-          ZXing.BarcodeFormat.UPC_A,
-          ZXing.BarcodeFormat.UPC_E,
-          ZXing.BarcodeFormat.CODABAR,
-          ZXing.BarcodeFormat.CODE_39,
-        ].forEach(f => { if (f !== undefined) formats.push(f); });
-      }
-      if (formats.length) hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-      zxingReader = new ZXing.MultiFormatReader();
-      zxingReader.setHints(hints);
-      console.log('ZXing initialized with', formats.length, 'numeric formats');
-      return true;
-    }
-  } catch(e) { console.warn('ZXing init error:', e); }
-  return false;
+    document.getElementById('camStatusTxt').textContent = 'CARGANDO OCR...';
+    ocrWorker = await Tesseract.createWorker('eng', 1, {
+      logger: () => {}
+    });
+    // Configure for digit/serial recognition
+    await ocrWorker.setParameters({
+      tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+      tessedit_pageseg_mode: '7',   // single line
+      preserve_interword_spaces: '0',
+    });
+    ocrReady = true;
+    document.getElementById('camStatusTxt').textContent = 'OCR LISTO — ESCANEANDO';
+    console.log('Tesseract OCR ready');
+  } catch(e) {
+    console.error('OCR init error:', e);
+    document.getElementById('camStatusTxt').textContent = 'ERROR OCR: ' + e.message;
+  }
 }
 
 function startDecoding() {
-  const video  = document.getElementById('camVideo');
-  const canvas = document.getElementById('camCanvas');
-  const ctx2d  = canvas.getContext('2d', { willReadFrequently: true });
+  const video = document.getElementById('camVideo');
 
-  // Initialize ZXing once
-  if (!zxingReader) initZXing();
+  // Offscreen canvas for cropped zone
+  cropCanvas = document.createElement('canvas');
+  cropCtx    = cropCanvas.getContext('2d', { willReadFrequently: true });
 
-  document.getElementById('camStatusTxt').textContent = 'ESCANEANDO...';
+  // Init OCR in background
+  initOCR();
 
-  // ── Crop helper: extract the central 75%×25% zone (the reticle) ──
-  // Matches CSS: left 12.5%-87.5%, top 37.5%-62.5%
-  function getCroppedFrame() {
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    if (!vw || !vh) return null;
+  // Scan every 800ms (OCR is slower than barcode)
+  async function ocrLoop() {
+    if (!scanning) return;
+    frameCount++;
 
-    // Full frame canvas
-    canvas.width  = vw;
-    canvas.height = vh;
-    ctx2d.drawImage(video, 0, 0);
-
-    // Crop to reticle zone
-    const cx = Math.floor(vw * 0.125);
-    const cy = Math.floor(vh * 0.375);
-    const cw = Math.floor(vw * 0.75);
-    const ch = Math.floor(vh * 0.25);
-
-    return ctx2d.getImageData(cx, cy, cw, ch);
-  }
-
-  // ── Native BarcodeDetector (Android Chrome, iOS17+ Safari) ──
-  if ('BarcodeDetector' in window) {
-    const numericFormats = ['ean_13','ean_8','code_128','itf','upc_a','upc_e','codabar','code_39','code_93'];
-
-    BarcodeDetector.getSupportedFormats().then(supported => {
-      const formats = numericFormats.filter(f => supported.includes(f));
-      const det = new BarcodeDetector({ formats: formats.length ? formats : ['ean_13','code_128'] });
-      console.log('BarcodeDetector using formats:', formats);
-
-      // Off-screen canvas for cropped region
-      const cropCanvas = document.createElement('canvas');
-      const cropCtx    = cropCanvas.getContext('2d', { willReadFrequently: true });
-
-      async function loop() {
-        if (!scanning) return;
-        if (video.readyState >= 2 && video.videoWidth > 0) {
-          try {
-            const vw = video.videoWidth, vh = video.videoHeight;
-            // Draw cropped region to separate canvas for BarcodeDetector
-            cropCanvas.width  = Math.floor(vw * 0.75);
-            cropCanvas.height = Math.floor(vh * 0.25);
-            cropCtx.drawImage(
-              video,
-              Math.floor(vw * 0.125), Math.floor(vh * 0.375),  // source x,y
-              cropCanvas.width, cropCanvas.height,               // source w,h
-              0, 0,                                              // dest x,y
-              cropCanvas.width, cropCanvas.height                // dest w,h
-            );
-            const codes = await det.detect(cropCanvas);
-            if (codes.length > 0) {
-              const val = codes[0].rawValue;
-              // Accept only numeric codes
-              if (/^\d+$/.test(val.replace(/[\s\-]/g,''))) {
-                onDetect(val);
-              }
-            }
-          } catch(e) {}
-        }
-        animFrame = requestAnimationFrame(loop);
-      }
-      loop();
-    }).catch(() => useZXingLoop());
-    return;
-  }
-
-  // Fallback: ZXing loop
-  useZXingLoop();
-
-  function useZXingLoop() {
-    if (!zxingReader) {
-      console.warn('No decoder available');
-      document.getElementById('camStatusTxt').textContent = 'Sin decodificador';
+    if (!ocrReady || ocrBusy) {
+      setTimeout(ocrLoop, 300);
+      return;
+    }
+    if (video.readyState < 2 || !video.videoWidth) {
+      setTimeout(ocrLoop, 300);
       return;
     }
 
-    function loop() {
-      if (!scanning) return;
-      frameCount++;
+    ocrBusy = true;
+    try {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
 
-      if (video.readyState >= 2 && video.videoWidth > 0) {
-        try {
-          const imgData = getCroppedFrame();
-          if (imgData) {
-            const lum = new ZXing.RGBLuminanceSource(imgData.data, imgData.width, imgData.height);
-            const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
-            const res = zxingReader.decode(bmp);
-            if (res) {
-              const val = res.getText().replace(/[\s\-]/g,'');
-              if (/^\d+$/.test(val)) onDetect(val);
-            }
-          }
-        } catch(e) {
-          // NotFoundException is normal when no barcode in frame — ignore
+      // Crop to reticle zone: center 75% wide x 25% tall
+      const sx = Math.floor(vw * 0.125);
+      const sy = Math.floor(vh * 0.375);
+      const sw = Math.floor(vw * 0.75);
+      const sh = Math.floor(vh * 0.25);
+
+      // Scale up 2x for better OCR accuracy
+      cropCanvas.width  = sw * 2;
+      cropCanvas.height = sh * 2;
+      cropCtx.imageSmoothingEnabled = false;
+
+      // Contrast boost + grayscale before OCR
+      cropCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cropCanvas.width, cropCanvas.height);
+
+      // Apply contrast filter for better number reading
+      cropCtx.filter = 'contrast(180%) brightness(110%) grayscale(100%)';
+      cropCtx.drawImage(cropCanvas, 0, 0);
+      cropCtx.filter = 'none';
+
+      const { data: { text } } = await ocrWorker.recognize(cropCanvas);
+      const raw = text.replace(/\s+/g, '').trim();
+
+      // Show live OCR reading
+      const ocrEl = document.getElementById('ocrLive');
+      if (raw.length > 1) {
+        ocrEl.style.display = 'block';
+        ocrEl.textContent   = raw.slice(0, 30);
+      }
+
+      // Extract up to 9 consecutive digits from the serial
+      if (raw.length >= 5) {
+        const digitMatch = raw.match(/\d{5,}/);
+        if (digitMatch) {
+          onDetect(digitMatch[0]);
         }
       }
-      animFrame = requestAnimationFrame(loop);
+    } catch(e) {
+      console.warn('OCR frame error:', e);
     }
-    loop();
+    ocrBusy = false;
+    // Repeat every 900ms — fast enough to feel real-time
+    setTimeout(ocrLoop, 900);
   }
+
+  ocrLoop();
 }
+
+
 
 // ── ON DETECT ────────────────────────────────
 function onDetect(rawCode) {

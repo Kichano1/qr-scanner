@@ -1,4 +1,4 @@
-const CACHE = 'qr-scanner-v4';
+const CACHE = 'qr-scanner-v5';
 
 const ASSETS = [
   './',
@@ -7,7 +7,7 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png',
   'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;600&display=swap',
-  'https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js'
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
 ];
 
 // Install: cache all assets
@@ -18,7 +18,7 @@ self.addEventListener('install', e => {
       return c.addAll(['./index.html', './manifest.json'])
         .then(() => {
           return Promise.allSettled(
-            ['https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js',
+            ['https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
              'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;600&display=swap']
             .map(url => fetch(url).then(r => c.put(url, r)).catch(() => {}))
           );
