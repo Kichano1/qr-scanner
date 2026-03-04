@@ -1,4 +1,4 @@
-const CACHE = 'qr-scanner-v7';
+const CACHE = 'qr-scanner-v8';
 
 const ASSETS = [
   './',
