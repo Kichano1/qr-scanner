@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>QR Scanner — Rangos A·B·C</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#060810">
@@ -411,6 +411,22 @@ header {
   transition:border-color .2s,box-shadow .2s;
 }
 .inp:focus{border-color:var(--blue);box-shadow:0 0 8px var(--glow-b)}
+
+/* ── BROWSER COMPAT BANNER ── */
+.compat-banner {
+  display: none;
+  margin: 0 20px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,170,0,0.4);
+  background: rgba(255,170,0,0.08);
+  font-size: .8rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+.compat-banner.show { display: flex; gap: 12px; align-items: flex-start; }
+.compat-banner .compat-ico { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
+.compat-title { font-family: 'Orbitron', monospace; font-size: .68rem; letter-spacing: .15em; color: var(--amber); margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -466,9 +482,19 @@ header {
 
     </div>
 
+    <!-- COMPAT BANNER -->
+    <div class="compat-banner" id="compatBanner">
+      <div class="compat-ico">⚠️</div>
+      <div>
+        <div class="compat-title">NAVEGADOR NO COMPATIBLE CON CÁMARA</div>
+        <span id="compatMsg">Chrome y Firefox en iPhone no pueden acceder a la cámara (restricción de Apple). 
+        Abre esta misma URL en <strong>Safari</strong> para usar la cámara, o usa la <strong>entrada manual</strong> aquí abajo.</span>
+      </div>
+    </div>
+
     <!-- CAMERA -->
     <div class="cam-wrapper" id="camWrapper">
-      <video id="camVideo" playsinline muted></video>
+      <video id="camVideo" playsinline webkit-playsinline muted autoplay></video>
       <canvas id="camCanvas" style="display:none"></canvas>
 
       <div class="scan-overlay" id="scanOverlay">
@@ -482,9 +508,9 @@ header {
       <div class="flash-overlay flash-fail" id="flashFail"></div>
 
       <div class="cam-off-msg" id="camOffMsg">
-        <div class="ico">📷</div>
-        <span>CÁMARA DESACTIVADA</span>
-        <span style="font-size:.68rem;opacity:.55">Selecciona rango e inicia cámara</span>
+        <div class="ico" id="camOffIco">📷</div>
+        <span id="camOffTitle">CÁMARA DESACTIVADA</span>
+        <span id="camOffSub" style="font-size:.68rem;opacity:.55;text-align:center;padding:0 20px">Selecciona rango e inicia cámara</span>
       </div>
     </div>
 
@@ -720,18 +746,94 @@ function beep(type) {
 }
 
 // ── CAMERA ───────────────────────────────────
+// ── DEVICE / BROWSER DETECTION ───────────────
+function detectPlatform() {
+  const ua = navigator.userAgent;
+  const isIOS     = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isAndroid = /Android/.test(ua);
+  const isSafari  = /^((?!chrome|android).)*safari/i.test(ua);
+  const isChrome  = /Chrome/.test(ua) && /Google Inc/.test(navigator.vendor);
+  const isChromeIOS = /CriOS/.test(ua); // Chrome on iOS
+  const isFirefoxIOS = /FxiOS/.test(ua);
+  return { isIOS, isAndroid, isSafari, isChrome, isChromeIOS, isFirefoxIOS };
+}
+
+function updateCamOffMessage() {
+  const p = detectPlatform();
+  const ico   = document.getElementById('camOffIco');
+  const title = document.getElementById('camOffTitle');
+  const sub   = document.getElementById('camOffSub');
+
+  if (p.isChromeIOS || p.isFirefoxIOS) {
+    // Chrome/Firefox on iPhone — cannot access camera
+    ico.textContent   = '⚠️';
+    title.textContent = 'ABRE CON SAFARI';
+    title.style.color = '#ffaa00';
+    sub.textContent   = 'Chrome y Firefox en iPhone no pueden acceder a la cámara por restricciones de Apple. Abre esta página en Safari.';
+    sub.style.opacity = '0.9';
+    document.getElementById('btnStartCam').style.display = 'none';
+    document.getElementById('btnFlipCam').style.display  = 'none';
+  } else if (p.isIOS && p.isSafari) {
+    ico.textContent   = '📷';
+    title.textContent = 'CÁMARA DESACTIVADA';
+    sub.textContent   = 'Selecciona rango e inicia cámara · Safari en iPhone ✔';
+  } else if (p.isAndroid) {
+    ico.textContent   = '📷';
+    title.textContent = 'CÁMARA DESACTIVADA';
+    sub.textContent   = 'Selecciona rango e inicia cámara · Chrome en Android ✔';
+  } else {
+    ico.textContent   = '📷';
+    title.textContent = 'CÁMARA DESACTIVADA';
+    sub.textContent   = 'Selecciona rango e inicia cámara';
+  }
+}
+
 async function startCamera() {
   if (!activeRange) {
     alert('Primero selecciona un rango (A, B o C).');
     return;
   }
+
+  // iOS Safari requires very simple constraints first
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+  // Build constraints — iOS needs exact facingMode format
+  let constraints;
+  if (isIOS || isSafari) {
+    constraints = {
+      video: {
+        facingMode: { ideal: facingMode },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    };
+  } else {
+    constraints = {
+      video: { facingMode, width:{ideal:1280}, height:{ideal:720} },
+      audio: false
+    };
+  }
+
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode, width:{ideal:1280}, height:{ideal:720} }
-    });
+    // Stop any existing stream first
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+
     const video = document.getElementById('camVideo');
+    video.setAttribute('playsinline', '');   // critical for iOS
+    video.setAttribute('webkit-playsinline', ''); // older iOS
+    video.setAttribute('muted', '');
+    video.muted = true;
     video.srcObject = stream;
-    await video.play();
+
+    // iOS needs explicit play() call after srcObject
+    await video.play().catch(e => {
+      // Autoplay blocked — try again on next user gesture
+      video.addEventListener('canplay', () => video.play(), { once: true });
+    });
 
     document.getElementById('camOffMsg').style.display   = 'none';
     document.getElementById('btnStartCam').style.display = 'none';
@@ -742,9 +844,43 @@ async function startCamera() {
     document.getElementById('camStatusTxt').textContent  = 'CÁMARA ACTIVA';
 
     scanning = true;
-    startDecoding();
+    // Small delay so video dimensions are ready (important on iOS)
+    setTimeout(startDecoding, 300);
+
   } catch(e) {
-    alert('No se pudo acceder a la cámara: ' + e.message);
+    let msg = '⚠️ No se pudo activar la cámara.\n\n';
+    if (e.name === 'NotAllowedError') {
+      msg += 'PERMISO DENEGADO.\nVe a Ajustes → Safari → Cámara → Permitir.';
+    } else if (e.name === 'NotFoundError') {
+      msg += 'No se encontró cámara en este dispositivo.';
+    } else if (e.name === 'NotReadableError') {
+      msg += 'La cámara está siendo usada por otra app. Ciérrala e intenta de nuevo.';
+    } else if (e.name === 'OverconstrainedError') {
+      // Retry with minimal constraints
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const video = document.getElementById('camVideo');
+        video.setAttribute('playsinline',''); video.muted = true;
+        video.srcObject = stream;
+        await video.play();
+        document.getElementById('camOffMsg').style.display   = 'none';
+        document.getElementById('btnStartCam').style.display = 'none';
+        document.getElementById('btnStopCam').style.display  = '';
+        document.getElementById('btnFlipCam').style.display  = '';
+        document.getElementById('scanLine').style.display    = '';
+        document.getElementById('camDot').classList.add('active');
+        document.getElementById('camStatusTxt').textContent  = 'CÁMARA ACTIVA';
+        scanning = true;
+        setTimeout(startDecoding, 300);
+        return;
+      } catch(e2) {
+        msg += 'Error al acceder a la cámara: ' + e2.message;
+      }
+    } else {
+      msg += e.name + ': ' + e.message;
+    }
+    alert(msg);
+    document.getElementById('camStatusTxt').textContent = 'ERROR CÁMARA';
   }
 }
 
@@ -765,25 +901,56 @@ function stopCamera() {
 
 function flipCamera() {
   facingMode = facingMode === 'environment' ? 'user' : 'environment';
-  stopCamera(); startCamera();
+  stopCamera();
+  setTimeout(startCamera, 400); // small delay for iOS to release camera
 }
 
 // ── DECODE LOOP ───────────────────────────────
 function startDecoding() {
-  if (typeof ZXing !== 'undefined') {
+  const video  = document.getElementById('camVideo');
+  const canvas = document.getElementById('camCanvas');
+  const ctx2d  = canvas.getContext('2d', { willReadFrequently: true });
+
+  // iOS Safari 17+ supports BarcodeDetector natively — try it first
+  if ('BarcodeDetector' in window) {
+    BarcodeDetector.getSupportedFormats().then(formats => {
+      const wanted = ['qr_code','ean_13','code_128','code_39','upc_a','upc_e','itf','pdf417','aztec','data_matrix'];
+      const supported = wanted.filter(f => formats.includes(f));
+      const det = new BarcodeDetector({ formats: supported.length ? supported : ['qr_code'] });
+
+      async function loop() {
+        if (!scanning) return;
+        if (video.readyState >= 2) {
+          try {
+            const codes = await det.detect(video);
+            if (codes.length > 0) onDetect(codes[0].rawValue);
+          } catch(e) {}
+        }
+        animFrame = requestAnimationFrame(loop);
+      }
+      loop();
+    }).catch(() => useZXing());
+    return;
+  }
+
+  // Fallback: ZXing
+  useZXing();
+
+  function useZXing() {
+    if (typeof ZXing === 'undefined') {
+      document.getElementById('statusSub').textContent = 'Usa Safari en iPhone para escanear con cámara.';
+      return;
+    }
     const hints = new Map();
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
     const reader = new ZXing.MultiFormatReader();
     reader.setHints(hints);
 
-    const video  = document.getElementById('camVideo');
-    const canvas = document.getElementById('camCanvas');
-    const ctx2d  = canvas.getContext('2d');
-
     function loop() {
       if (!scanning) return;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      if (video.readyState >= 2 && video.videoWidth > 0) {
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
         ctx2d.drawImage(video, 0, 0);
         try {
           const img = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
@@ -796,22 +963,6 @@ function startDecoding() {
       animFrame = requestAnimationFrame(loop);
     }
     loop();
-  } else if ('BarcodeDetector' in window) {
-    const det = new BarcodeDetector({
-      formats:['qr_code','ean_13','code_128','code_39','upc_a','upc_e','itf','pdf417','aztec','data_matrix']
-    });
-    const video = document.getElementById('camVideo');
-    async function loop() {
-      if (!scanning) return;
-      try {
-        const codes = await det.detect(video);
-        if (codes.length > 0) onDetect(codes[0].rawValue);
-      } catch(e) {}
-      animFrame = requestAnimationFrame(loop);
-    }
-    loop();
-  } else {
-    document.getElementById('statusSub').textContent = 'Navegador no compatible. Usa Chrome.';
   }
 }
 
@@ -965,9 +1116,22 @@ function esc(s) {
 
 // ── INIT ──────────────────────────────────
 renderHistory();
-// Auto-select range from URL hash (#A, #B, #C)
-const hashRange = location.hash.replace("#","").toUpperCase();
-if (["A","B","C"].includes(hashRange)) selectRange(hashRange);
+
+// Detect browser and show appropriate messages
+(function() {
+  const p = detectPlatform();
+  updateCamOffMessage();
+
+  // Show compat banner for Chrome/Firefox on iOS
+  if (p.isChromeIOS || p.isFirefoxIOS) {
+    document.getElementById('compatBanner').classList.add('show');
+  }
+
+  // Auto-select range from URL hash (#A, #B, #C)
+  const hashRange = location.hash.replace('#','').toUpperCase();
+  if (['A','B','C'].includes(hashRange)) selectRange(hashRange);
+})();
+
 
 </script>
 <script>
