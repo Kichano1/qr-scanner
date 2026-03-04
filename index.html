@@ -3,1272 +3,692 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>QR Scanner — Rangos A·B·C</title>
+<title>Scanner Billetes Bolivia</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#060810">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="QR Scanner">
-<!-- Tesseract.js: OCR para leer texto/números impresos -->
+<meta name="apple-mobile-web-app-title" content="Billetes Bs">
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;600&display=swap');
-
-:root {
-  --bg:     #060810;
-  --panel:  #0c0f1a;
-  --border: #1a2035;
-  --green:  #00ff88;
-  --red:    #ff1a3c;
-  --amber:  #ffaa00;
-  --blue:   #00c8ff;
-  --text:   #ccd8f0;
-  --dim:    #3a4a60;
-  --glow-g: rgba(0,255,136,0.25);
-  --glow-r: rgba(255,26,60,0.30);
-  --glow-b: rgba(0,200,255,0.20);
-
-  /* Range button colors */
-  --ca: #a855f7;   /* purple  */
-  --cb: #f97316;   /* orange  */
-  --cc: #06b6d4;   /* cyan    */
-  --ga: rgba(168,85,247,0.22);
-  --gb: rgba(249,115,22,0.22);
-  --gc: rgba(6,182,212,0.22);
+:root{
+  --bg:#060810;--panel:#0c0f1a;--brd:#1a2035;
+  --green:#00ff88;--red:#ff1a3c;--amber:#ffaa00;--blue:#00c8ff;
+  --text:#ccd8f0;--dim:#3a4a60;
+  --gg:rgba(0,255,136,.25);--gr:rgba(255,26,60,.30);--gb:rgba(0,200,255,.20);
+  --c10:#a855f7;--c20:#f97316;--c50:#06b6d4;
 }
-
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Rajdhani', sans-serif;
-  min-height: 100vh;
-  overflow-x: hidden;
-  background-image:
-    radial-gradient(ellipse 60% 40% at 15% 10%, rgba(0,200,255,0.07) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 50% at 85% 90%, rgba(0,255,136,0.04) 0%, transparent 70%),
-    repeating-linear-gradient(0deg,  transparent, transparent 39px, rgba(255,255,255,0.012) 40px),
-    repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.012) 40px);
-}
-
-/* ── HEADER ── */
-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(6,8,16,0.85);
-  backdrop-filter: blur(12px);
-  position: sticky; top:0; z-index:100;
-  gap: 12px;
-}
-
-.logo {
-  font-family: 'Orbitron', monospace;
-  font-size: .95rem; font-weight: 900;
-  color: var(--blue); letter-spacing: .22em;
-  text-shadow: 0 0 18px var(--glow-b);
-  white-space: nowrap;
-}
-
-.header-right {
-  display: flex; align-items: center; gap: 12px;
-}
-
-.pulse-dot {
-  width:8px; height:8px; border-radius:50%;
-  background: var(--amber); box-shadow: 0 0 8px var(--amber);
-  animation: pulse 2s infinite; flex-shrink:0;
-}
-.pulse-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); }
-@keyframes pulse {
-  0%,100%{opacity:1;transform:scale(1)}
-  50%    {opacity:.5;transform:scale(.8)}
-}
-
-.cam-status-txt {
-  font-family:'Orbitron',monospace; font-size:.68rem;
-  letter-spacing:.12em; color:var(--dim);
-}
-
-/* ── LAYOUT ── */
-.main {
-  display: grid;
-  grid-template-columns: 1fr 360px;
-  min-height: calc(100vh - 60px);
-}
-@media(max-width:860px){
-  .main{grid-template-columns:1fr}
-  .sidebar{border-left:none;border-top:1px solid var(--border)}
-}
-
-/* ── LEFT: CAMERA PANEL ── */
-.cam-panel {
-  padding: 20px;
-  display: flex; flex-direction: column; gap: 16px;
-}
-
-/* ─ BIG STATUS ─ */
-.status-display {
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  padding: 18px 22px;
-  display: flex; align-items: center; gap: 16px;
-  min-height: 86px;
-  position: relative; overflow: hidden;
-  transition: border-color .35s, box-shadow .35s;
-  background: var(--panel);
-}
-.status-display::before {
-  content:''; position:absolute; inset:0;
-  opacity:0; transition:opacity .35s; pointer-events:none;
-}
-.status-display.state-ok  {
-  border-color: var(--green);
-  box-shadow: 0 0 48px var(--glow-g), inset 0 0 28px rgba(0,255,136,.06);
-}
-.status-display.state-ok::before  { background:radial-gradient(ellipse,rgba(0,255,136,.12),transparent 70%); opacity:1; }
-.status-display.state-fail{
-  border-color: var(--red);
-  box-shadow: 0 0 48px var(--glow-r), inset 0 0 28px rgba(255,26,60,.08);
-}
-.status-display.state-fail::before{ background:radial-gradient(ellipse,rgba(255,26,60,.14),transparent 70%); opacity:1; }
-
-.status-badge {
-  width:54px; height:54px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-size:1.7rem; flex-shrink:0;
-  border:2px solid var(--border);
-  transition: border-color .35s, box-shadow .35s;
-}
-.state-ok   .status-badge { border-color:var(--green); box-shadow:0 0 18px var(--glow-g); }
-.state-fail .status-badge { border-color:var(--red);   box-shadow:0 0 18px var(--glow-r); }
-
-.status-info { flex:1; min-width:0; }
-
-.status-code {
-  font-family:'Orbitron',monospace;
-  font-size: clamp(.9rem,3vw,1.5rem);
-  font-weight:700; letter-spacing:.06em;
-  word-break:break-all; line-height:1.2;
-  transition: color .35s;
-}
-.state-idle .status-code { color:var(--dim); }
-.state-ok   .status-code { color:var(--green); text-shadow:0 0 18px var(--glow-g); }
-.state-fail .status-code { color:var(--red);   text-shadow:0 0 14px var(--glow-r); }
-
-.status-sub {
-  font-size:.72rem; letter-spacing:.16em;
-  text-transform:uppercase; margin-top:3px; font-weight:600;
-  transition:color .35s;
-}
-.state-idle .status-sub { color:var(--dim); }
-.state-ok   .status-sub { color:var(--green); }
-.state-fail .status-sub { color:var(--red); }
-
-.status-extracted {
-  font-family:'Orbitron',monospace; font-size:.65rem;
-  color:var(--dim); margin-top:5px; letter-spacing:.08em;
-}
-
-.status-counter {
-  display:flex; flex-direction:column; align-items:flex-end; gap:4px;
-  font-family:'Orbitron',monospace; font-size:.68rem; flex-shrink:0;
-}
-.cnt-ok   { color:var(--green); }
-.cnt-fail { color:var(--red); }
-
-/* ─ RANGE SELECTOR ─ */
-.range-selector {
-  display: grid; grid-template-columns: repeat(3,1fr); gap: 10px;
-}
-
-.range-btn {
-  border-radius: 10px;
-  border: 2px solid transparent;
-  padding: 14px 10px;
-  cursor: pointer;
-  text-align: center;
-  background: var(--panel);
-  transition: border-color .25s, box-shadow .25s, transform .1s;
-  position: relative; overflow: hidden;
-}
-.range-btn::before {
-  content:''; position:absolute; inset:0;
-  opacity:0; transition:opacity .25s;
-}
-.range-btn:active { transform:scale(.97); }
-
-.range-btn.rA { border-color:rgba(168,85,247,.3); }
-.range-btn.rA::before { background:radial-gradient(ellipse,var(--ga),transparent 70%); }
-.range-btn.rA.active  { border-color:var(--ca); box-shadow:0 0 22px var(--ga); }
-.range-btn.rA.active::before { opacity:1; }
-
-.range-btn.rB { border-color:rgba(249,115,22,.3); }
-.range-btn.rB::before { background:radial-gradient(ellipse,var(--gb),transparent 70%); }
-.range-btn.rB.active  { border-color:var(--cb); box-shadow:0 0 22px var(--gb); }
-.range-btn.rB.active::before { opacity:1; }
-
-.range-btn.rC { border-color:rgba(6,182,212,.3); }
-.range-btn.rC::before { background:radial-gradient(ellipse,var(--gc),transparent 70%); }
-.range-btn.rC.active  { border-color:var(--cc); box-shadow:0 0 22px var(--gc); }
-.range-btn.rC.active::before { opacity:1; }
-
-.rbtn-letter {
-  font-family:'Orbitron',monospace; font-weight:900;
-  font-size:1.5rem; line-height:1;
-  display:block; margin-bottom:4px;
-}
-.rA .rbtn-letter { color:var(--ca); }
-.rB .rbtn-letter { color:var(--cb); }
-.rC .rbtn-letter { color:var(--cc); }
-
-.rbtn-range {
-  font-family:'Orbitron',monospace; font-size:.56rem;
-  letter-spacing:.05em; color:var(--dim); line-height:1.5;
-  display:block;
-}
-.range-btn.active .rbtn-range { color:var(--text); }
-
-.rbtn-label {
-  font-size:.7rem; font-weight:600; letter-spacing:.1em;
-  margin-top:3px; display:block;
-  text-transform:uppercase;
-}
-.rA .rbtn-label { color:var(--ca); }
-.rB .rbtn-label { color:var(--cb); }
-.rC .rbtn-label { color:var(--cc); }
-
-/* ─ CAMERA ─ */
-.cam-wrapper {
-  position:relative; border-radius:14px; overflow:hidden;
-  border:1px solid var(--border); background:#000;
-  aspect-ratio:4/3; max-height:420px;
-}
-#camVideo { width:100%; height:100%; object-fit:cover; display:block; }
-
-.scan-overlay { position:absolute; inset:0; pointer-events:none; }
-.bracket {
-  position:absolute; width:44px; height:44px;
-  border-color:var(--blue); border-style:solid; opacity:.7;
-  transition:border-color .3s;
-}
-.bracket.tl { top:calc(43.75% - 2px); left:calc(31.25% - 2px);  border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
-.bracket.tr { top:calc(43.75% - 2px); right:calc(31.25% - 2px); border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
-.bracket.bl { bottom:calc(43.75% - 2px); left:calc(31.25% - 2px);  border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
-.bracket.br { bottom:calc(43.75% - 2px); right:calc(31.25% - 2px); border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
-.state-ok   .bracket { border-color:var(--green); }
-.state-fail .bracket { border-color:var(--red); }
-
-@keyframes scanH {
-  0%  { top:43.75%; opacity:1; }
-  90% { opacity:1; }
-  100%{ top:56.25%; opacity:0; }
-}
-.scan-line {
-  position:absolute; left:33%; right:33%; height:2px;
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;
+  display:flex;flex-direction:column;
+  background-image:radial-gradient(ellipse 60% 40% at 15% 10%,rgba(0,200,255,.06) 0%,transparent 70%),
+    radial-gradient(ellipse 50% 50% at 85% 90%,rgba(0,255,136,.04) 0%,transparent 70%);}
+header{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;border-bottom:1px solid var(--brd);
+  background:rgba(6,8,16,.95);backdrop-filter:blur(12px);
+  position:sticky;top:0;z-index:100;flex-shrink:0;}
+.logo{font-family:'Orbitron',monospace;font-size:.75rem;font-weight:900;
+  color:var(--blue);letter-spacing:.2em;text-shadow:0 0 14px var(--gb);}
+.hdr-right{display:flex;align-items:center;gap:7px;}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);
+  box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite;flex-shrink:0;}
+.pulse-dot.active{background:var(--green);box-shadow:0 0 6px var(--green);}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+#camStatusTxt{font-family:'Orbitron',monospace;font-size:.58rem;letter-spacing:.1em;color:var(--dim);}
+.main{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:8px;}
+.main::-webkit-scrollbar{width:3px;}
+.main::-webkit-scrollbar-thumb{background:var(--brd);border-radius:2px;}
+/* STATUS */
+.status-display{border-radius:10px;border:1px solid var(--brd);padding:10px 14px;
+  display:flex;align-items:center;gap:10px;position:relative;overflow:hidden;
+  transition:border-color .3s,box-shadow .3s;background:var(--panel);flex-shrink:0;min-height:60px;}
+.status-display::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .3s;pointer-events:none;}
+.status-display.state-ok{border-color:var(--green);box-shadow:0 0 28px var(--gg),inset 0 0 16px rgba(0,255,136,.05);}
+.status-display.state-ok::before{background:radial-gradient(ellipse,rgba(0,255,136,.1),transparent 70%);opacity:1;}
+.status-display.state-fail{border-color:var(--red);box-shadow:0 0 28px var(--gr),inset 0 0 16px rgba(255,26,60,.06);}
+.status-display.state-fail::before{background:radial-gradient(ellipse,rgba(255,26,60,.1),transparent 70%);opacity:1;}
+.status-badge{width:40px;height:40px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:1.3rem;
+  border:2px solid var(--brd);transition:border-color .3s,box-shadow .3s;}
+.state-ok .status-badge{border-color:var(--green);box-shadow:0 0 12px var(--gg);}
+.state-fail .status-badge{border-color:var(--red);box-shadow:0 0 12px var(--gr);}
+.status-info{flex:1;min-width:0;}
+.status-code{font-family:'Orbitron',monospace;font-size:clamp(.8rem,4vw,1.2rem);
+  font-weight:700;letter-spacing:.06em;word-break:break-all;line-height:1.2;transition:color .3s;}
+.state-idle .status-code{color:var(--dim);}
+.state-ok .status-code{color:var(--green);text-shadow:0 0 12px var(--gg);}
+.state-fail .status-code{color:var(--red);text-shadow:0 0 10px var(--gr);}
+.status-sub{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;margin-top:2px;font-weight:600;transition:color .3s;}
+.state-idle .status-sub{color:var(--dim);}
+.state-ok .status-sub{color:var(--green);}
+.state-fail .status-sub{color:var(--red);}
+.status-counter{display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+  font-family:'Orbitron',monospace;font-size:.6rem;flex-shrink:0;}
+.cnt-ok{color:var(--green);}.cnt-fail{color:var(--red);}
+/* LAST SCAN */
+.last-scan-box{background:var(--panel);border:1px solid var(--brd);border-radius:8px;padding:7px 12px;flex-shrink:0;}
+.last-scan-label{font-family:'Orbitron',monospace;font-size:.5rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:4px;}
+.last-scan-val{font-family:'Orbitron',monospace;font-size:.88rem;color:var(--blue);letter-spacing:.1em;word-break:break-all;min-height:1.1em;}
+.last-scan-digits{font-size:.62rem;color:var(--dim);margin-top:2px;font-family:'Orbitron',monospace;letter-spacing:.06em;}
+/* DENOM BUTTONS */
+.denom-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;flex-shrink:0;}
+.denom-btn{border-radius:8px;border:2px solid transparent;padding:7px 4px 6px;
+  cursor:pointer;text-align:center;background:var(--panel);
+  transition:border-color .25s,box-shadow .25s,transform .1s;position:relative;overflow:hidden;}
+.denom-btn::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .25s;}
+.denom-btn:active{transform:scale(.96);}
+.denom-btn.d10{border-color:rgba(168,85,247,.3);}
+.denom-btn.d10::before{background:radial-gradient(ellipse,rgba(168,85,247,.2),transparent 70%);}
+.denom-btn.d10.active{border-color:var(--c10);box-shadow:0 0 14px rgba(168,85,247,.35);}
+.denom-btn.d10.active::before{opacity:1;}
+.denom-btn.d20{border-color:rgba(249,115,22,.3);}
+.denom-btn.d20::before{background:radial-gradient(ellipse,rgba(249,115,22,.2),transparent 70%);}
+.denom-btn.d20.active{border-color:var(--c20);box-shadow:0 0 14px rgba(249,115,22,.35);}
+.denom-btn.d20.active::before{opacity:1;}
+.denom-btn.d50{border-color:rgba(6,182,212,.3);}
+.denom-btn.d50::before{background:radial-gradient(ellipse,rgba(6,182,212,.2),transparent 70%);}
+.denom-btn.d50.active{border-color:var(--c50);box-shadow:0 0 14px rgba(6,182,212,.35);}
+.denom-btn.d50.active::before{opacity:1;}
+.denom-amount{font-family:'Orbitron',monospace;font-weight:900;font-size:1.1rem;line-height:1;display:block;margin-bottom:1px;}
+.d10 .denom-amount{color:var(--c10);}.d20 .denom-amount{color:var(--c20);}.d50 .denom-amount{color:var(--c50);}
+.denom-label{font-size:.52rem;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;display:block;}
+.denom-btn.active .denom-label{color:var(--text);}
+.denom-range{font-family:'Orbitron',monospace;font-size:.42rem;letter-spacing:.03em;color:var(--dim);display:block;margin-top:1px;line-height:1.4;}
+.denom-btn.active .denom-range{color:var(--text);opacity:.75;}
+/* CAMERA */
+.cam-wrapper{position:relative;border-radius:10px;overflow:hidden;
+  border:1px solid var(--brd);background:#000;
+  width:100%;aspect-ratio:16/9;max-height:200px;flex-shrink:0;}
+#camVideo{width:100%;height:100%;object-fit:cover;display:block;}
+.smask{position:absolute;background:rgba(6,8,16,.82);pointer-events:none;}
+.smask.top   {top:0;   left:0;right:0;height:43.75%;}
+.smask.bottom{bottom:0;left:0;right:0;height:43.75%;}
+.smask.left  {top:43.75%;bottom:43.75%;left:0;width:31.25%;}
+.smask.right {top:43.75%;bottom:43.75%;right:0;width:31.25%;}
+.reticle{position:absolute;top:43.75%;bottom:43.75%;left:31.25%;right:31.25%;
+  border:2px solid rgba(0,200,255,.9);border-radius:3px;
+  box-shadow:0 0 0 1px rgba(0,200,255,.2),inset 0 0 10px rgba(0,200,255,.06);}
+.reticle::after{content:'SERIAL DEL BILLETE';position:absolute;bottom:-15px;left:50%;
+  transform:translateX(-50%);font-family:'Orbitron',monospace;font-size:.42rem;
+  letter-spacing:.1em;color:rgba(0,200,255,.6);white-space:nowrap;}
+.bk{position:absolute;width:24px;height:24px;border-color:var(--blue);border-style:solid;opacity:.8;transition:border-color .25s;}
+.bk.tl{top:calc(43.75% - 2px);left:calc(31.25% - 2px);  border-width:2px 0 0 2px;border-radius:2px 0 0 0;}
+.bk.tr{top:calc(43.75% - 2px);right:calc(31.25% - 2px); border-width:2px 2px 0 0;border-radius:0 2px 0 0;}
+.bk.bl{bottom:calc(43.75% - 2px);left:calc(31.25% - 2px);  border-width:0 0 2px 2px;border-radius:0 0 0 2px;}
+.bk.br{bottom:calc(43.75% - 2px);right:calc(31.25% - 2px); border-width:0 2px 2px 0;border-radius:0 0 2px 0;}
+.scan-ok  .bk{border-color:var(--green);}
+.scan-fail .bk{border-color:var(--red);}
+@keyframes scanH{0%{top:43.75%;opacity:1}90%{opacity:1}100%{top:56.25%;opacity:0}}
+.scan-line{position:absolute;left:33%;right:33%;height:2px;
   background:linear-gradient(90deg,transparent,var(--blue) 20%,var(--blue) 80%,transparent);
-  box-shadow:0 0 10px var(--blue),0 0 20px rgba(0,200,255,.5);
-  animation:scanH 1.6s ease-in-out infinite;
-}
-/* Dark overlay masks outside scan zone */
-.scan-mask-top, .scan-mask-bottom, .scan-mask-left, .scan-mask-right {
-  position: absolute;
-  background: rgba(6,8,16,0.78);
-  pointer-events: none;
-}
-.scan-mask-top    { top:0; left:0; right:0; height:43.75%; }
-.scan-mask-bottom { bottom:0; left:0; right:0; height:43.75%; }
-.scan-mask-left   { top:43.75%; bottom:43.75%; left:0; width:31.25%; }
-.scan-mask-right  { top:43.75%; bottom:43.75%; right:0; width:31.25%; }
-
-.reticle {
-  position:absolute;
-  top: 43.75%; bottom: 43.75%;
-  left: 31.25%; right: 31.25%;
-  border: 2px solid rgba(0,200,255,0.85);
-  border-radius: 5px;
-  box-shadow: 0 0 0 1px rgba(0,200,255,0.25), inset 0 0 16px rgba(0,200,255,0.06);
-}
-.reticle::after {
-  content: 'SERIAL DEL BILLETE';
-  position: absolute;
-  bottom: -20px; left: 50%;
-  transform: translateX(-50%);
-  font-family: 'Orbitron', monospace;
-  font-size: .52rem;
-  letter-spacing: .12em;
-  color: rgba(0,200,255,0.65);
-  white-space: nowrap;
-}
-
-.cam-off-msg {
-  position:absolute; inset:0;
-  display:flex; flex-direction:column;
-  align-items:center; justify-content:center; gap:10px;
-  background:rgba(6,8,16,.92); color:var(--dim);
-  font-size:.82rem; letter-spacing:.1em; font-family:'Orbitron',monospace;
-}
-.cam-off-msg .ico { font-size:2.4rem; opacity:.4; }
-
-@keyframes flashOv { 0%{opacity:.75} 100%{opacity:0} }
-.flash-overlay { position:absolute; inset:0; border-radius:14px; pointer-events:none; opacity:0; }
-.flash-ok   { background:rgba(0,255,136,.3); }
-.flash-fail { background:rgba(255,26,60,.4); }
-.do-flash { animation:flashOv .5s ease forwards; }
-
-/* ─ CONTROLS ─ */
-.cam-controls { display:flex; gap:8px; flex-wrap:wrap; }
-.btn {
-  display:inline-flex; align-items:center; gap:6px;
-  padding:9px 18px; border-radius:8px;
-  border:1px solid var(--border); background:var(--panel);
-  color:var(--text); font-family:'Rajdhani',sans-serif;
-  font-weight:600; font-size:.82rem; letter-spacing:.1em;
-  text-transform:uppercase; cursor:pointer;
-  transition:border-color .2s, box-shadow .2s, color .2s;
-}
-.btn:hover { border-color:var(--blue); color:var(--blue); box-shadow:0 0 10px var(--glow-b); }
-.btn:active{ transform:scale(.97); }
-.btn.primary{ background:var(--blue); color:#000; border-color:var(--blue); font-weight:700; }
-.btn.primary:hover{ box-shadow:0 0 18px var(--glow-b); color:#000; }
-.btn.danger { border-color:rgba(255,26,60,.25); color:var(--dim); }
-.btn.danger:hover { border-color:var(--red); color:var(--red); box-shadow:0 0 10px var(--glow-r); }
-
-.cooldown-bar { height:3px; background:rgba(0,200,255,.12); border-radius:2px; overflow:hidden; margin-top:2px; }
-.cooldown-fill{ height:100%; background:var(--blue); width:0%; border-radius:2px; }
-
-/* ── SIDEBAR ── */
-.sidebar {
-  border-left:1px solid var(--border);
-  display:flex; flex-direction:column; overflow:hidden;
-}
-
-.sidebar-tabs { display:flex; border-bottom:1px solid var(--border); }
-.tab {
-  flex:1; padding:13px 6px;
-  font-family:'Orbitron',monospace; font-size:.6rem;
-  letter-spacing:.15em; text-transform:uppercase;
-  color:var(--dim); cursor:pointer;
-  border-bottom:2px solid transparent; text-align:center;
-  transition:color .2s, border-color .2s;
-}
-.tab:hover { color:var(--text); }
-.tab.active { color:var(--blue); border-bottom-color:var(--blue); }
-
-.tab-content { display:none; flex:1; overflow-y:auto; flex-direction:column; }
-.tab-content.active { display:flex; }
-.tab-content::-webkit-scrollbar{width:4px}
-.tab-content::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-
-/* ─ RANGE INFO PANEL ─ */
-.range-info {
-  margin:16px; border-radius:10px;
-  border:1px solid var(--border);
-  overflow:hidden;
-}
-.ri-header {
-  padding:10px 14px;
-  display:flex; align-items:center; gap:10px;
-  font-family:'Orbitron',monospace; font-size:.72rem;
-  letter-spacing:.12em; border-bottom:1px solid var(--border);
-}
-.ri-letter {
-  font-size:1.2rem; font-weight:900; line-height:1;
-}
-.ri-row {
-  padding:10px 14px;
-  display:flex; justify-content:space-between;
-  border-bottom:1px solid rgba(255,255,255,.04);
-  font-size:.78rem;
-}
-.ri-lbl { color:var(--dim); }
-.ri-val { font-family:'Orbitron',monospace; font-size:.7rem; color:var(--text); }
-
-/* ─ HISTORY ─ */
-.hist-item {
-  display:flex; align-items:center; gap:10px;
-  padding:9px 16px; border-bottom:1px solid rgba(255,255,255,.04);
-  transition:background .15s;
-}
-.hist-item:hover { background:rgba(255,255,255,.02); }
-.hist-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
-.hist-item.ok   .hist-dot { background:var(--green);box-shadow:0 0 6px var(--green); }
-.hist-item.fail .hist-dot { background:var(--red);  box-shadow:0 0 6px var(--red); }
-.hist-code { flex:1;font-family:'Orbitron',monospace;font-size:.68rem;word-break:break-all;line-height:1.3; }
-.hist-meta { text-align:right;flex-shrink:0; }
-.hist-status { font-size:.62rem;letter-spacing:.08em;font-weight:700; }
-.hist-item.ok   .hist-status { color:var(--green); }
-.hist-item.fail .hist-status { color:var(--red); }
-.hist-range-tag {
-  font-size:.58rem; letter-spacing:.06em; display:block; margin-top:2px;
-}
-.hist-time { font-size:.6rem;color:var(--dim);display:block;margin-top:1px; }
-.hist-empty { padding:30px 16px;text-align:center;color:var(--dim);font-size:.76rem;letter-spacing:.1em; }
-
-/* section */
-.section { padding:16px; border-bottom:1px solid var(--border); }
-.section-title {
-  font-family:'Orbitron',monospace; font-size:.62rem;
-  letter-spacing:.2em; color:var(--dim); text-transform:uppercase; margin-bottom:10px;
-}
-.setting-row {
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);
-}
-.setting-label{font-size:.85rem;font-weight:500}
-.setting-sub{font-size:.7rem;color:var(--dim);margin-top:2px}
-.toggle{
-  width:42px;height:22px;border-radius:11px;
-  background:var(--border);position:relative;cursor:pointer;
-  transition:background .25s;flex-shrink:0;
-}
-.toggle.on{background:var(--blue)}
-.toggle::after{
-  content:'';position:absolute;width:16px;height:16px;border-radius:50%;
-  background:#fff;top:3px;left:3px;transition:left .25s;
-  box-shadow:0 1px 4px rgba(0,0,0,.4);
-}
-.toggle.on::after{left:23px}
-
-.inp {
-  flex:1;background:rgba(0,0,0,.4);border:1px solid var(--border);
-  border-radius:7px;color:var(--text);font-family:'Rajdhani',sans-serif;
-  font-size:.92rem;font-weight:500;padding:8px 12px;outline:none;
-  transition:border-color .2s,box-shadow .2s;
-}
-.inp:focus{border-color:var(--blue);box-shadow:0 0 8px var(--glow-b)}
-
-/* ── BROWSER COMPAT BANNER ── */
-.compat-banner {
-  display: none;
-  margin: 0 20px;
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,170,0,0.4);
-  background: rgba(255,170,0,0.08);
-  font-size: .8rem;
-  line-height: 1.6;
-  color: var(--text);
-}
-.compat-banner.show { display: flex; gap: 12px; align-items: flex-start; }
-.compat-banner .compat-ico { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
-.compat-title { font-family: 'Orbitron', monospace; font-size: .68rem; letter-spacing: .15em; color: var(--amber); margin-bottom: 4px; }
+  box-shadow:0 0 7px var(--blue);animation:scanH 1.3s ease-in-out infinite;}
+.scan-overlay{position:absolute;inset:0;pointer-events:none;}
+#ocrLive{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);
+  background:rgba(6,8,16,.88);border:1px solid rgba(0,200,255,.3);border-radius:4px;
+  padding:2px 8px;font-family:'Orbitron',monospace;font-size:.55rem;
+  color:rgba(0,200,255,.9);letter-spacing:.1em;pointer-events:none;white-space:nowrap;
+  max-width:90%;overflow:hidden;text-overflow:ellipsis;display:none;}
+@keyframes flashOv{0%{opacity:.8}100%{opacity:0}}
+.flash-overlay{position:absolute;inset:0;border-radius:10px;pointer-events:none;opacity:0;}
+.flash-ok  {background:rgba(0,255,136,.3);}
+.flash-fail{background:rgba(255,26,60,.4);}
+.do-flash  {animation:flashOv .45s ease forwards;}
+.cam-off-msg{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;
+  background:rgba(6,8,16,.93);color:var(--dim);
+  font-size:.65rem;letter-spacing:.1em;font-family:'Orbitron',monospace;}
+.cam-off-msg .ico{font-size:1.6rem;opacity:.4;}
+.compat-banner{display:none;padding:8px 12px;border-radius:8px;
+  border:1px solid rgba(255,170,0,.4);background:rgba(255,170,0,.07);
+  font-size:.68rem;line-height:1.6;gap:8px;align-items:flex-start;flex-shrink:0;}
+.compat-banner.show{display:flex;}
+.cooldown-bar{height:2px;background:rgba(0,200,255,.1);border-radius:2px;overflow:hidden;flex-shrink:0;}
+.cooldown-fill{height:100%;background:var(--blue);width:0%;border-radius:2px;}
+.cam-controls{display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:6px;
+  border:1px solid var(--brd);background:var(--panel);color:var(--text);
+  font-family:'Rajdhani',sans-serif;font-weight:600;font-size:.75rem;
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;white-space:nowrap;
+  transition:border-color .2s,box-shadow .2s,color .2s;}
+.btn:hover{border-color:var(--blue);color:var(--blue);box-shadow:0 0 8px var(--gb);}
+.btn:active{transform:scale(.97);}
+.btn.primary{background:var(--blue);color:#000;border-color:var(--blue);font-weight:700;}
+.btn.primary:hover{box-shadow:0 0 14px var(--gb);color:#000;}
+.btn.danger{border-color:rgba(255,26,60,.2);color:var(--dim);}
+.btn.danger:hover{border-color:var(--red);color:var(--red);}
+.manual-box{background:var(--panel);border:1px solid var(--brd);border-radius:8px;padding:8px 10px;flex-shrink:0;}
+.manual-label{font-family:'Orbitron',monospace;font-size:.48rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:6px;}
+.manual-row{display:flex;gap:6px;}
+.inp{flex:1;background:rgba(0,0,0,.45);border:1px solid var(--brd);border-radius:6px;
+  color:var(--text);font-family:'Orbitron',monospace;font-size:.85rem;font-weight:700;
+  padding:8px 10px;outline:none;letter-spacing:.08em;transition:border-color .2s,box-shadow .2s;}
+.inp:focus{border-color:var(--blue);box-shadow:0 0 7px var(--gb);}
+.sheet-toggle-row{display:flex;gap:5px;flex-shrink:0;}
+.stbtn{flex:1;padding:7px 4px;border-radius:7px;border:1px solid var(--brd);
+  background:var(--panel);color:var(--dim);font-family:'Orbitron',monospace;
+  font-size:.52rem;letter-spacing:.12em;text-transform:uppercase;
+  cursor:pointer;text-align:center;transition:all .2s;}
+.stbtn:hover{color:var(--text);}
+.stbtn.active{border-color:var(--blue);color:var(--blue);background:rgba(0,200,255,.07);}
+.sheet{background:var(--panel);border:1px solid var(--brd);border-radius:10px;
+  flex-shrink:0;display:none;max-height:180px;overflow-y:auto;}
+.sheet.open{display:block;}
+.sheet::-webkit-scrollbar{width:3px;}
+.sheet::-webkit-scrollbar-thumb{background:var(--brd);border-radius:2px;}
+.hist-hdr{display:flex;justify-content:space-between;align-items:center;
+  padding:7px 12px;border-bottom:1px solid var(--brd);
+  position:sticky;top:0;background:var(--panel);z-index:1;}
+.hist-hdr-lbl{font-family:'Orbitron',monospace;font-size:.55rem;letter-spacing:.18em;color:var(--dim);}
+.hist-item{display:flex;align-items:center;gap:7px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,.03);}
+.hist-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.hist-item.ok   .hist-dot{background:var(--green);box-shadow:0 0 4px var(--green);}
+.hist-item.fail .hist-dot{background:var(--red);  box-shadow:0 0 4px var(--red);}
+.hist-code{flex:1;font-family:'Orbitron',monospace;font-size:.6rem;word-break:break-all;}
+.hist-meta{text-align:right;flex-shrink:0;}
+.hist-status{font-size:.58rem;letter-spacing:.08em;font-weight:700;display:block;}
+.hist-item.ok   .hist-status{color:var(--green);}
+.hist-item.fail .hist-status{color:var(--red);}
+.hist-tag{font-size:.52rem;display:block;margin-top:1px;}
+.hist-time{font-size:.5rem;color:var(--dim);display:block;margin-top:1px;}
+.hist-empty{padding:20px;text-align:center;color:var(--dim);font-size:.65rem;letter-spacing:.1em;}
+.cfg-section{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);}
+.cfg-title{font-family:'Orbitron',monospace;font-size:.52rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px;}
+.cfg-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:.8rem;font-weight:500;}
+.cfg-sub{font-size:.62rem;color:var(--dim);}
+.toggle{width:38px;height:20px;border-radius:10px;background:var(--brd);position:relative;cursor:pointer;transition:background .25s;flex-shrink:0;}
+.toggle.on{background:var(--blue);}
+.toggle::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:3px;left:3px;transition:left .25s;box-shadow:0 1px 3px rgba(0,0,0,.4);}
+.toggle.on::after{left:21px;}
+.serie-info{display:flex;flex-direction:column;gap:5px;}
+.serie-row{display:flex;align-items:center;gap:8px;font-size:.72rem;}
+.serie-badge{border-radius:4px;padding:2px 7px;font-family:'Orbitron',monospace;font-size:.58rem;font-weight:700;flex-shrink:0;}
+.sa{background:rgba(0,255,136,.1);border:1px solid var(--green);color:var(--green);}
+.sb{background:rgba(255,26,60,.1);border:1px solid var(--red);color:var(--red);}
 </style>
 </head>
 <body>
-
-<!-- HEADER -->
 <header>
-  <div class="logo">⬡ QR SCANNER</div>
-  <div class="header-right">
+  <div class="logo">⬡ BILLETES Bs</div>
+  <div class="hdr-right">
     <div class="pulse-dot" id="camDot"></div>
-    <span class="cam-status-txt" id="camStatusTxt">CÁMARA INACTIVA</span>
+    <span id="camStatusTxt">INACTIVA</span>
   </div>
 </header>
 
-<div class="main">
-
-  <!-- ═══ LEFT ═══ -->
-  <div class="cam-panel">
-
-    <!-- STATUS -->
-    <div class="status-display state-idle" id="statusDisplay">
-      <div class="status-badge" id="statusBadge">⬡</div>
-      <div class="status-info">
-        <div class="status-code" id="statusCode">SELECCIONA UN RANGO</div>
-        <div class="status-sub"  id="statusSub">Elige A, B o C y luego inicia la cámara</div>
-        <div class="status-extracted" id="statusExtracted"></div>
-      </div>
-      <div class="status-counter">
-        <span class="cnt-ok">✔ <span id="cntOk">0</span></span>
-        <span class="cnt-fail">✖ <span id="cntFail">0</span></span>
-      </div>
+<div class="main" id="mainScroll">
+  <div class="status-display state-idle" id="statusDisplay">
+    <div class="status-badge" id="statusBadge">⬡</div>
+    <div class="status-info">
+      <div class="status-code" id="statusCode">SELECCIONA BILLETE</div>
+      <div class="status-sub"  id="statusSub">Elige 10, 20 o 50 Bs</div>
     </div>
-
-    <!-- RANGE BUTTONS -->
-    <div class="range-selector">
-
-      <div class="range-btn rA" id="btnA" onclick="selectRange('A')">
-        <span class="rbtn-letter">A</span>
-        <span class="rbtn-range">067250001<br>↕<br>092250000</span>
-        <span class="rbtn-label">Rango A</span>
-      </div>
-
-      <div class="range-btn rB" id="btnB" onclick="selectRange('B')">
-        <span class="rbtn-letter">B</span>
-        <span class="rbtn-range">087280145<br>↕<br>120950000</span>
-        <span class="rbtn-label">Rango B</span>
-      </div>
-
-      <div class="range-btn rC" id="btnC" onclick="selectRange('C')">
-        <span class="rbtn-letter">C</span>
-        <span class="rbtn-range">077100001<br>↕<br>109850000</span>
-        <span class="rbtn-label">Rango C</span>
-      </div>
-
+    <div class="status-counter">
+      <span class="cnt-ok">✔ <span id="cntOk">0</span></span>
+      <span class="cnt-fail">✖ <span id="cntFail">0</span></span>
     </div>
-
-    <!-- COMPAT BANNER -->
-    <div class="compat-banner" id="compatBanner">
-      <div class="compat-ico">⚠️</div>
-      <div>
-        <div class="compat-title">NAVEGADOR NO COMPATIBLE CON CÁMARA</div>
-        <span id="compatMsg">Chrome y Firefox en iPhone no pueden acceder a la cámara (restricción de Apple). 
-        Abre esta misma URL en <strong>Safari</strong> para usar la cámara, o usa la <strong>entrada manual</strong> aquí abajo.</span>
-      </div>
-    </div>
-
-    <!-- CAMERA -->
-    <div class="cam-wrapper" id="camWrapper">
-      <video id="camVideo" playsinline webkit-playsinline muted autoplay></video>
-      <canvas id="camCanvas" style="display:none"></canvas>
-
-      <div class="scan-overlay" id="scanOverlay">
-        <!-- Dark masks outside scan zone -->
-        <div class="scan-mask-top"></div>
-        <div class="scan-mask-bottom"></div>
-        <div class="scan-mask-left"></div>
-        <div class="scan-mask-right"></div>
-        <!-- Corner brackets on reticle corners -->
-        <div class="bracket tl"></div><div class="bracket tr"></div>
-        <div class="bracket bl"></div><div class="bracket br"></div>
-        <div class="scan-line" id="scanLine" style="display:none"></div>
-        <div class="reticle"></div>
-      </div>
-
-      <!-- OCR live reading display -->
-      <div id="ocrLive" style="
-        position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
-        background:rgba(6,8,16,0.82); border:1px solid rgba(0,200,255,0.3);
-        border-radius:6px; padding:5px 14px;
-        font-family:'Orbitron',monospace; font-size:.75rem;
-        color:rgba(0,200,255,0.9); letter-spacing:.12em;
-        pointer-events:none; white-space:nowrap;
-        max-width:90%; overflow:hidden; text-overflow:ellipsis;
-        display:none;
-      ">—</div>
-
-      <div class="flash-overlay flash-ok"   id="flashOk"></div>
-      <div class="flash-overlay flash-fail" id="flashFail"></div>
-
-      <div class="cam-off-msg" id="camOffMsg">
-        <div class="ico" id="camOffIco">📷</div>
-        <span id="camOffTitle">CÁMARA DESACTIVADA</span>
-        <span id="camOffSub" style="font-size:.68rem;opacity:.55;text-align:center;padding:0 20px">Selecciona rango A, B o C e inicia cámara para leer seriales de billetes</span>
-      </div>
-    </div>
-
-    <div class="cooldown-bar"><div class="cooldown-fill" id="cooldownFill"></div></div>
-
-    <!-- CAM CONTROLS -->
-
-    <!-- MANUAL INPUT -->
-    <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;">
-      <div style="font-family:Orbitron,monospace;font-size:.62rem;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;margin-bottom:10px;">⌨ Entrada Manual — sin cámara</div>
-      <div style="display:flex;gap:8px;">
-        <input id="manualInput" type="text" inputmode="numeric" maxlength="30" placeholder="Escribe o pega el código aquí..." style="flex:1;background:rgba(0,0,0,.45);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:Orbitron,monospace;font-size:1rem;font-weight:700;padding:11px 14px;outline:none;letter-spacing:.08em;transition:border-color .2s,box-shadow .2s;" onfocus="this.style.borderColor='var(--blue)';this.style.boxShadow='0 0 10px var(--glow-b)'" onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'" onkeydown="if(event.key==='Enter')manualScan()">
-        <button class="btn primary" onclick="manualScan()" style="padding:11px 20px;font-size:.88rem;white-space:nowrap;">▶ VERIFICAR</button>
-      </div>
-      <div style="font-size:.7rem;color:var(--dim);margin-top:7px;font-family:Rajdhani,sans-serif;letter-spacing:.05em;">Presiona Enter o el botón · Se leen los primeros 9 dígitos del código</div>
-    </div>
-
-    <div class="cam-controls">
-      <button class="btn primary" id="btnStartCam" onclick="startCamera()">▶ Iniciar Cámara</button>
-      <button class="btn" id="btnStopCam"  onclick="stopCamera()"  style="display:none">⏹ Detener</button>
-      <button class="btn" id="btnFlipCam"  onclick="flipCamera()"  style="display:none">🔄 Voltear</button>
-      <button class="btn danger"           onclick="clearAll()">🗑 Limpiar Todo</button>
-    </div>
-
   </div>
 
-  <!-- ═══ SIDEBAR ═══ -->
-  <aside class="sidebar">
+  <div class="last-scan-box">
+    <div class="last-scan-label">Último texto leído por la cámara</div>
+    <div class="last-scan-val"    id="lastScanRaw">—</div>
+    <div class="last-scan-digits" id="lastScanDigits"></div>
+  </div>
 
-    <div class="sidebar-tabs">
-      <div class="tab active" onclick="switchTab('info')">Rangos</div>
-      <div class="tab"        onclick="switchTab('history')">Historial</div>
-      <div class="tab"        onclick="switchTab('settings')">Config</div>
+  <div class="denom-row">
+    <div class="denom-btn d10" id="btn10" onclick="selectDenom('10')">
+      <span class="denom-amount">10</span>
+      <span class="denom-label">Bs</span>
+      <span class="denom-range">067250001<br>092250000</span>
     </div>
+    <div class="denom-btn d20" id="btn20" onclick="selectDenom('20')">
+      <span class="denom-amount">20</span>
+      <span class="denom-label">Bs</span>
+      <span class="denom-range">087280145<br>120950000</span>
+    </div>
+    <div class="denom-btn d50" id="btn50" onclick="selectDenom('50')">
+      <span class="denom-amount">50</span>
+      <span class="denom-label">Bs</span>
+      <span class="denom-range">077100001<br>109850000</span>
+    </div>
+  </div>
 
-    <!-- INFO TAB -->
-    <div class="tab-content active" id="tab-info">
+  <div class="compat-banner" id="compatBanner">
+    <span>⚠️</span>
+    <div>
+      <div style="font-family:Orbitron,monospace;font-size:.58rem;letter-spacing:.15em;color:var(--amber);margin-bottom:2px">ABRE CON SAFARI</div>
+      Chrome/Firefox en iPhone no pueden acceder a la cámara. Abre en Safari o usa entrada manual.
+    </div>
+  </div>
 
-      <div class="range-info" style="border-color:rgba(168,85,247,.4)">
-        <div class="ri-header" style="background:rgba(168,85,247,.08)">
-          <span class="ri-letter" style="color:var(--ca)">A</span>
-          <span style="font-size:.65rem;color:var(--ca);letter-spacing:.15em">RANGO A</span>
-        </div>
-        <div class="ri-row"><span class="ri-lbl">Desde</span><span class="ri-val" style="color:var(--ca)">067 250 001</span></div>
-        <div class="ri-row"><span class="ri-lbl">Hasta</span><span class="ri-val" style="color:var(--ca)">092 250 000</span></div>
-        <div class="ri-row"><span class="ri-lbl">Total códigos</span><span class="ri-val">24 999 999</span></div>
+  <div class="cam-wrapper" id="camWrapper">
+    <video id="camVideo" playsinline webkit-playsinline muted autoplay></video>
+    <canvas id="camCanvas" style="display:none"></canvas>
+    <div class="scan-overlay" id="scanOverlay">
+      <div class="smask top"></div><div class="smask bottom"></div>
+      <div class="smask left"></div><div class="smask right"></div>
+      <div class="bk tl"></div><div class="bk tr"></div>
+      <div class="bk bl"></div><div class="bk br"></div>
+      <div class="scan-line" id="scanLine" style="display:none"></div>
+      <div class="reticle"></div>
+    </div>
+    <div id="ocrLive"></div>
+    <div class="flash-overlay flash-ok"   id="flashOk"></div>
+    <div class="flash-overlay flash-fail" id="flashFail"></div>
+    <div class="cam-off-msg" id="camOffMsg">
+      <div class="ico" id="camOffIco">📷</div>
+      <span id="camOffTitle">CÁMARA DESACTIVADA</span>
+      <span style="font-size:.55rem;opacity:.6;text-align:center;padding:0 16px" id="camOffSub">Selecciona billete e inicia cámara</span>
+    </div>
+  </div>
+
+  <div class="cooldown-bar"><div class="cooldown-fill" id="cooldownFill"></div></div>
+
+  <div class="cam-controls">
+    <button class="btn primary" id="btnStartCam" onclick="startCamera()">▶ Iniciar</button>
+    <button class="btn" id="btnStopCam" onclick="stopCamera()" style="display:none">⏹ Detener</button>
+    <button class="btn" id="btnFlipCam" onclick="flipCamera()" style="display:none">🔄 Voltear</button>
+    <button class="btn danger" onclick="clearAll()">🗑 Borrar</button>
+  </div>
+
+  <div class="manual-box">
+    <div class="manual-label">⌨ Entrada manual</div>
+    <div class="manual-row">
+      <input class="inp" id="manualInput" type="text" inputmode="numeric"
+        maxlength="30" placeholder="Escribe el serial del billete..."
+        onkeydown="if(event.key==='Enter')manualScan()">
+      <button class="btn primary" onclick="manualScan()" style="padding:8px 14px">▶ OK</button>
+    </div>
+  </div>
+
+  <div class="sheet-toggle-row">
+    <div class="stbtn" id="togHistory" onclick="toggleSheet('history')">▸ Historial <span id="histCount">0</span></div>
+    <div class="stbtn" id="togConfig"  onclick="toggleSheet('config')">⚙ Config</div>
+  </div>
+
+  <div class="sheet" id="sheetHistory">
+    <div class="hist-hdr">
+      <span class="hist-hdr-lbl">REGISTROS</span>
+      <button class="btn danger" style="font-size:.62rem;padding:4px 9px" onclick="clearHistory()">Borrar</button>
+    </div>
+    <div id="histList"><div class="hist-empty">// Sin registros //</div></div>
+  </div>
+
+  <div class="sheet" id="sheetConfig">
+    <div class="cfg-section">
+      <div class="cfg-title">Audio</div>
+      <div class="cfg-row">
+        <span>🔊 Sonido</span>
+        <div class="toggle on" id="togSound" onclick="toggleSetting('sound')"></div>
       </div>
-
-      <div class="range-info" style="border-color:rgba(249,115,22,.4)">
-        <div class="ri-header" style="background:rgba(249,115,22,.08)">
-          <span class="ri-letter" style="color:var(--cb)">B</span>
-          <span style="font-size:.65rem;color:var(--cb);letter-spacing:.15em">RANGO B</span>
-        </div>
-        <div class="ri-row"><span class="ri-lbl">Desde</span><span class="ri-val" style="color:var(--cb)">087 280 145</span></div>
-        <div class="ri-row"><span class="ri-lbl">Hasta</span><span class="ri-val" style="color:var(--cb)">120 950 000</span></div>
-        <div class="ri-row"><span class="ri-lbl">Total códigos</span><span class="ri-val">33 669 855</span></div>
-      </div>
-
-      <div class="range-info" style="border-color:rgba(6,182,212,.4)">
-        <div class="ri-header" style="background:rgba(6,182,212,.08)">
-          <span class="ri-letter" style="color:var(--cc)">C</span>
-          <span style="font-size:.65rem;color:var(--cc);letter-spacing:.15em">RANGO C</span>
-        </div>
-        <div class="ri-row"><span class="ri-lbl">Desde</span><span class="ri-val" style="color:var(--cc)">077 100 001</span></div>
-        <div class="ri-row"><span class="ri-lbl">Hasta</span><span class="ri-val" style="color:var(--cc)">109 850 000</span></div>
-        <div class="ri-row"><span class="ri-lbl">Total códigos</span><span class="ri-val">32 749 999</span></div>
-      </div>
-
-      <div class="section" style="flex:1">
-        <div class="section-title">Reglas de Serie</div>
-        <div style="font-size:.8rem;line-height:2;font-family:Orbitron,monospace">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            <span style="background:rgba(0,255,136,.15);border:1px solid var(--green);border-radius:4px;padding:2px 8px;color:var(--green);font-size:.7rem">SERIE A</span>
-            <span style="color:var(--green);font-size:.72rem">→ SIEMPRE VERDE</span>
-          </div>
-          <div style="color:var(--dim);font-size:.65rem;margin-bottom:10px">Todos los billetes serie A están fuera de rango automáticamente</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            <span style="background:rgba(255,26,60,.12);border:1px solid var(--red);border-radius:4px;padding:2px 8px;color:var(--red);font-size:.7rem">SERIE B</span>
-            <span style="color:var(--text);font-size:.72rem">→ VERIFICA RANGO</span>
-          </div>
-          <div style="color:var(--dim);font-size:.65rem;margin-bottom:12px">Los billetes serie B se evalúan contra el rango A, B o C seleccionado</div>
-          <div style="color:var(--dim);font-size:.65rem;border-top:1px solid var(--border);padding-top:8px">
-            Rango activo:<br>
-            <span id="activeRangeLabel" style="color:var(--amber)"> — ninguno —</span>
-          </div>
-        </div>
+      <div class="cfg-row">
+        <div><div>Cooldown entre scans</div><div class="cfg-sub">Evita dobles lecturas</div></div>
+        <select id="cooldownSel" style="background:rgba(0,0,0,.4);border:1px solid var(--brd);
+          border-radius:5px;color:var(--text);font-family:Orbitron,monospace;font-size:.65rem;
+          padding:4px 6px;outline:none;" onchange="cooldown=parseInt(this.value)">
+          <option value="1000">1s</option>
+          <option value="2000" selected>2s</option>
+          <option value="3000">3s</option>
+        </select>
       </div>
     </div>
-
-    <!-- HISTORIAL TAB -->
-    <div class="tab-content" id="tab-history">
-      <div style="padding:11px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <span style="font-family:Orbitron,monospace;font-size:.62rem;letter-spacing:.18em;color:var(--dim)">
-          REGISTROS: <span id="histCount">0</span>
-        </span>
-        <button class="btn danger" style="font-size:.7rem;padding:5px 11px" onclick="clearHistory()">Borrar</button>
-      </div>
-      <div id="histList" style="flex:1;overflow-y:auto">
-        <div class="hist-empty">// Sin registros aún //</div>
-      </div>
-    </div>
-
-    <!-- SETTINGS TAB -->
-    <div class="tab-content" id="tab-settings">
-      <div class="section">
-        <div class="section-title">Audio</div>
-        <div class="setting-row">
-          <div><div class="setting-label">🔊 Sonido activado</div></div>
-          <div class="toggle on" id="togSound" onclick="toggle('sound')"></div>
+    <div class="cfg-section">
+      <div class="cfg-title">Reglas de Serie</div>
+      <div class="serie-info">
+        <div class="serie-row">
+          <span class="serie-badge sa">SERIE A</span>
+          <span style="color:var(--green)">→ Siempre VERDE automático</span>
         </div>
-        <div class="setting-row">
-          <div><div class="setting-label">Volumen</div></div>
-          <input type="range" id="volSlider" min="0" max="100" value="60"
-            style="width:90px;accent-color:var(--blue)" oninput="volume=this.value/100">
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">Escáner</div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Cooldown entre scans</div>
-            <div class="setting-sub">Evita lecturas duplicadas</div>
-          </div>
-          <select id="cooldownSel" class="inp" style="flex:none;width:76px;padding:6px 8px" onchange="cooldown=parseInt(this.value)">
-            <option value="1000">1 s</option>
-            <option value="2000" selected>2 s</option>
-            <option value="3000">3 s</option>
-            <option value="5000">5 s</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Solo registrar fallos</div>
-            <div class="setting-sub">Historial solo con fuera-de-rango</div>
-          </div>
-          <div class="toggle" id="togFailOnly" onclick="toggle('failOnly')"></div>
-        </div>
-      </div>
-      <div class="section">
-        <div class="section-title">Raspberry Pi — Kiosk</div>
-        <div style="font-size:.7rem;color:var(--dim);background:rgba(0,0,0,.3);border-radius:6px;padding:10px;font-family:monospace;line-height:2">
-          chromium-browser --kiosk \<br>
-          &nbsp;--app=file:///home/pi/scanner.html
+        <div class="serie-row">
+          <span class="serie-badge sb">SERIE B</span>
+          <span style="color:var(--text)">→ Verifica el rango del billete</span>
         </div>
       </div>
     </div>
+    <div class="cfg-section">
+      <div class="cfg-title">Raspberry Pi — Kiosk</div>
+      <div style="font-size:.6rem;color:var(--dim);font-family:monospace;line-height:2;background:rgba(0,0,0,.3);border-radius:5px;padding:8px;">
+        chromium-browser --kiosk \<br>&nbsp;--app=file:///home/pi/index.html
+      </div>
+    </div>
+  </div>
 
-  </aside>
+  <div style="height:8px;flex-shrink:0;"></div>
 </div>
 
-<!-- ══════════ JS ══════════ -->
 <script>
-// ── RANGOS ──────────────────────────────────
-const RANGES = {
-  A: { min: 67250001,  max: 92250000,  color: '#a855f7', label: 'Rango A' },
-  B: { min: 87280145,  max: 120950000, color: '#f97316', label: 'Rango B' },
-  C: { min: 77100001,  max: 109850000, color: '#06b6d4', label: 'Rango C' },
+const DENOMS={
+  '10':{min:67250001, max:92250000,  color:'#a855f7',label:'10 Bs',rk:'A'},
+  '20':{min:87280145, max:120950000, color:'#f97316',label:'20 Bs',rk:'B'},
+  '50':{min:77100001, max:109850000, color:'#06b6d4',label:'50 Bs',rk:'C'},
 };
+let activeDenom=null,history=[],cntOk=0,cntFail=0;
+let scanning=false,stream=null,facingMode='environment';
+let lastScan=0,cooldown=2000,soundOn=true,volume=0.65;
+let audioCtx=null,ocrWorker=null,ocrReady=false,ocrBusy=false,openSheet=null;
 
-// ── STATE ────────────────────────────────────
-let activeRange  = null;   // 'A' | 'B' | 'C'
-let history      = [];
-let cntOk        = 0, cntFail = 0;
-let scanning     = false;
-let stream       = null;
-let facingMode   = 'environment';
-let lastScan     = 0;
-let cooldown     = 2000;
-let soundOn      = true;
-let failOnly     = false;
-let volume       = 0.6;
-let audioCtx     = null;
-let animFrame    = null;
-
-// ── SELECT RANGE ─────────────────────────────
-function selectRange(key) {
-  activeRange = key;
-  ['A','B','C'].forEach(k => {
-    document.getElementById('btn'+k).classList.toggle('active', k === key);
-  });
-  const r = RANGES[key];
-  document.getElementById('activeRangeLabel').textContent = ` ${r.label}  [${r.min} – ${r.max}]`;
-  document.getElementById('activeRangeLabel').style.color = r.color;
-
-  // reset display
-  const d = document.getElementById('statusDisplay');
-  d.className = 'status-display state-idle';
-  document.getElementById('statusBadge').textContent = '⬡';
-  document.getElementById('statusCode').textContent  = 'RANGO ' + key + ' SELECCIONADO';
-  document.getElementById('statusSub').textContent   = `${r.min.toLocaleString()} → ${r.max.toLocaleString()}`;
-  document.getElementById('statusExtracted').textContent = '';
+function selectDenom(key){
+  activeDenom=key;
+  ['10','20','50'].forEach(k=>document.getElementById('btn'+k).classList.toggle('active',k===key));
+  const d=DENOMS[key];
+  document.getElementById('statusCode').textContent=d.label+' — LISTO';
+  document.getElementById('statusSub').textContent='Rango '+d.rk+': '+d.min.toLocaleString()+' → '+d.max.toLocaleString();
+  document.getElementById('statusDisplay').className='status-display state-idle';
+  document.getElementById('statusBadge').textContent='⬡';
 }
 
-// ── EXTRACT 9 DIGITS ─────────────────────────
-// Toma los primeros 9 dígitos numéricos del código
-function extract9(raw) {
-  const digits = raw.replace(/\D/g, ''); // strip non-digits
-  return digits.slice(0, 9);             // first 9
+function extract9(raw){return raw.replace(/\D/g,'').slice(0,9);}
+
+function inRange(num9){
+  if(!activeDenom||!num9) return false;
+  const n=parseInt(num9,10);
+  if(isNaN(n)) return false;
+  const{min,max}=DENOMS[activeDenom];
+  return n>=min&&n<=max;
 }
 
-// ── CHECK RANGE ──────────────────────────────
-function inRange(num9) {
-  if (!activeRange) return false;
-  const n = parseInt(num9, 10);
-  if (isNaN(n)) return false;
-  const { min, max } = RANGES[activeRange];
-  return n >= min && n <= max;
+function detectSerie(raw){
+  const m=raw.match(/^([A-Z])/i);
+  return m?m[1].toUpperCase():null;
 }
 
-// ── AUDIO ────────────────────────────────────
-function getACtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function getACtx(){
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   return audioCtx;
 }
-function beep(type) {
-  if (!soundOn) return;
-  const ctx = getACtx();
-  if (ctx.state === 'suspended') ctx.resume();
-  if (type === 'ok') {
-    [[880,1100,0,.18],[1100,1320,.2,.35]].forEach(([f1,f2,t1,t2]) => {
-      const o=ctx.createOscillator(), g=ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.type='sine';
-      o.frequency.setValueAtTime(f1, ctx.currentTime+t1);
-      o.frequency.linearRampToValueAtTime(f2, ctx.currentTime+t2);
-      g.gain.setValueAtTime(volume*.4, ctx.currentTime+t1);
-      g.gain.linearRampToValueAtTime(0, ctx.currentTime+t2+.06);
-      o.start(ctx.currentTime+t1); o.stop(ctx.currentTime+t2+.1);
+function beep(type){
+  if(!soundOn) return;
+  const ctx=getACtx();
+  if(ctx.state==='suspended') ctx.resume();
+  if(type==='ok'){
+    [[880,1100,0,.17],[1100,1320,.19,.34]].forEach(([f1,f2,t1,t2])=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type='sine';
+      o.frequency.setValueAtTime(f1,ctx.currentTime+t1);
+      o.frequency.linearRampToValueAtTime(f2,ctx.currentTime+t2);
+      g.gain.setValueAtTime(volume*.4,ctx.currentTime+t1);
+      g.gain.linearRampToValueAtTime(0,ctx.currentTime+t2+.06);
+      o.start(ctx.currentTime+t1);o.stop(ctx.currentTime+t2+.1);
     });
   } else {
-    [0,.22].forEach(d => {
-      const o=ctx.createOscillator(), g=ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.type='sawtooth';
-      o.frequency.setValueAtTime(340, ctx.currentTime+d);
-      o.frequency.linearRampToValueAtTime(180, ctx.currentTime+d+.18);
-      g.gain.setValueAtTime(volume*.35, ctx.currentTime+d);
-      g.gain.linearRampToValueAtTime(0, ctx.currentTime+d+.18);
-      o.start(ctx.currentTime+d); o.stop(ctx.currentTime+d+.22);
+    [0,.21].forEach(d=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type='sawtooth';
+      o.frequency.setValueAtTime(330,ctx.currentTime+d);
+      o.frequency.linearRampToValueAtTime(180,ctx.currentTime+d+.17);
+      g.gain.setValueAtTime(volume*.35,ctx.currentTime+d);
+      g.gain.linearRampToValueAtTime(0,ctx.currentTime+d+.17);
+      o.start(ctx.currentTime+d);o.stop(ctx.currentTime+d+.2);
     });
   }
 }
 
-// ── CAMERA ───────────────────────────────────
-// ── DEVICE / BROWSER DETECTION ───────────────
-function detectPlatform() {
-  const ua = navigator.userAgent;
-  const isIOS     = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
-  const isAndroid = /Android/.test(ua);
-  const isSafari  = /^((?!chrome|android).)*safari/i.test(ua);
-  const isChrome  = /Chrome/.test(ua) && /Google Inc/.test(navigator.vendor);
-  const isChromeIOS = /CriOS/.test(ua); // Chrome on iOS
-  const isFirefoxIOS = /FxiOS/.test(ua);
-  return { isIOS, isAndroid, isSafari, isChrome, isChromeIOS, isFirefoxIOS };
+function detectPlatform(){
+  const ua=navigator.userAgent;
+  return{
+    isIOS:/iPad|iPhone|iPod/.test(ua)&&!window.MSStream,
+    isSafari:/^((?!chrome|android).)*safari/i.test(ua),
+    isChromeIOS:/CriOS/.test(ua),
+    isFirefoxIOS:/FxiOS/.test(ua),
+  };
 }
 
-function updateCamOffMessage() {
-  const p = detectPlatform();
-  const ico   = document.getElementById('camOffIco');
-  const title = document.getElementById('camOffTitle');
-  const sub   = document.getElementById('camOffSub');
-
-  if (p.isChromeIOS || p.isFirefoxIOS) {
-    // Chrome/Firefox on iPhone — cannot access camera
-    ico.textContent   = '⚠️';
-    title.textContent = 'ABRE CON SAFARI';
-    title.style.color = '#ffaa00';
-    sub.textContent   = 'Chrome y Firefox en iPhone no pueden acceder a la cámara por restricciones de Apple. Abre esta página en Safari.';
-    sub.style.opacity = '0.9';
-    document.getElementById('btnStartCam').style.display = 'none';
-    document.getElementById('btnFlipCam').style.display  = 'none';
-  } else if (p.isIOS && p.isSafari) {
-    ico.textContent   = '📷';
-    title.textContent = 'CÁMARA DESACTIVADA';
-    sub.textContent   = 'Selecciona rango e inicia cámara · Safari en iPhone ✔';
-  } else if (p.isAndroid) {
-    ico.textContent   = '📷';
-    title.textContent = 'CÁMARA DESACTIVADA';
-    sub.textContent   = 'Selecciona rango e inicia cámara · Chrome en Android ✔';
-  } else {
-    ico.textContent   = '📷';
-    title.textContent = 'CÁMARA DESACTIVADA';
-    sub.textContent   = 'Selecciona rango e inicia cámara';
-  }
-}
-
-async function startCamera() {
-  if (!activeRange) {
-    alert('Primero selecciona un rango (A, B o C).');
-    return;
-  }
-
-  // iOS Safari requires very simple constraints first
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-  // Build constraints — iOS needs exact facingMode format
-  let constraints;
-  if (isIOS || isSafari) {
-    constraints = {
-      video: {
-        facingMode: { ideal: facingMode },
-        width:  { ideal: 640 },   // lower res = wider FOV, faster focus
-        height: { ideal: 480 }
-      },
-      audio: false
-    };
-  } else {
-    constraints = {
-      video: { facingMode, width:{ideal:640}, height:{ideal:480} },
-      audio: false
-    };
-  }
-
-  try {
-    // Stop any existing stream first
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-    const video = document.getElementById('camVideo');
-    video.setAttribute('playsinline', '');   // critical for iOS
-    video.setAttribute('webkit-playsinline', ''); // older iOS
-    video.setAttribute('muted', '');
-    video.muted = true;
-    video.srcObject = stream;
-
-    // iOS needs explicit play() call after srcObject
-    await video.play().catch(e => {
-      // Autoplay blocked — try again on next user gesture
-      video.addEventListener('canplay', () => video.play(), { once: true });
-    });
-
-    document.getElementById('camOffMsg').style.display   = 'none';
-    document.getElementById('btnStartCam').style.display = 'none';
-    document.getElementById('btnStopCam').style.display  = '';
-    document.getElementById('btnFlipCam').style.display  = '';
-    document.getElementById('scanLine').style.display    = '';
+async function startCamera(){
+  if(!activeDenom){alert('Selecciona primero el billete: 10, 20 o 50 Bs');return;}
+  const p=detectPlatform();
+  const constraints={
+    video:{
+      facingMode:(p.isIOS||p.isSafari)?{ideal:facingMode}:facingMode,
+      width:{ideal:640},height:{ideal:480}
+    },audio:false
+  };
+  try{
+    if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+    const video=document.getElementById('camVideo');
+    video.setAttribute('playsinline','');
+    video.setAttribute('webkit-playsinline','');
+    video.muted=true;video.srcObject=stream;
+    await video.play().catch(()=>video.addEventListener('canplay',()=>video.play(),{once:true}));
+    document.getElementById('camOffMsg').style.display='none';
+    document.getElementById('btnStartCam').style.display='none';
+    document.getElementById('btnStopCam').style.display='';
+    document.getElementById('btnFlipCam').style.display='';
+    document.getElementById('scanLine').style.display='';
     document.getElementById('camDot').classList.add('active');
-    document.getElementById('camStatusTxt').textContent  = 'CÁMARA ACTIVA';
-
-    scanning = true;
-    // Small delay so video dimensions are ready (important on iOS)
-    setTimeout(startDecoding, 300);
-
-  } catch(e) {
-    let msg = '⚠️ No se pudo activar la cámara.\n\n';
-    if (e.name === 'NotAllowedError') {
-      msg += 'PERMISO DENEGADO.\nVe a Ajustes → Safari → Cámara → Permitir.';
-    } else if (e.name === 'NotFoundError') {
-      msg += 'No se encontró cámara en este dispositivo.';
-    } else if (e.name === 'NotReadableError') {
-      msg += 'La cámara está siendo usada por otra app. Ciérrala e intenta de nuevo.';
-    } else if (e.name === 'OverconstrainedError') {
-      // Retry with minimal constraints
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        const video = document.getElementById('camVideo');
-        video.setAttribute('playsinline',''); video.muted = true;
-        video.srcObject = stream;
-        await video.play();
-        document.getElementById('camOffMsg').style.display   = 'none';
-        document.getElementById('btnStartCam').style.display = 'none';
-        document.getElementById('btnStopCam').style.display  = '';
-        document.getElementById('btnFlipCam').style.display  = '';
-        document.getElementById('scanLine').style.display    = '';
-        document.getElementById('camDot').classList.add('active');
-        document.getElementById('camStatusTxt').textContent  = 'CÁMARA ACTIVA';
-        scanning = true;
-        setTimeout(startDecoding, 300);
-        return;
-      } catch(e2) {
-        msg += 'Error al acceder a la cámara: ' + e2.message;
-      }
-    } else {
-      msg += e.name + ': ' + e.message;
-    }
+    document.getElementById('camStatusTxt').textContent='CARGANDO OCR...';
+    scanning=true;
+    setTimeout(startDecoding,300);
+  }catch(e){
+    let msg='Sin acceso a la camara.\n\n';
+    if(e.name==='NotAllowedError') msg+='Permiso denegado. Ve a Ajustes > Safari > Camara > Permitir.';
+    else if(e.name==='NotFoundError') msg+='No se encontro camara.';
+    else msg+=e.name+': '+e.message;
     alert(msg);
-    document.getElementById('camStatusTxt').textContent = 'ERROR CÁMARA';
   }
 }
 
-function stopCamera() {
-  scanning = false;
-  ocrBusy  = false;
-  if (animFrame) cancelAnimationFrame(animFrame);
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  const video = document.getElementById('camVideo');
-  video.srcObject = null;
-  document.getElementById('camOffMsg').style.display   = 'flex';
-  document.getElementById('ocrLive').style.display     = 'none';
-  document.getElementById('btnStartCam').style.display = '';
-  document.getElementById('btnStopCam').style.display  = 'none';
-  document.getElementById('btnFlipCam').style.display  = 'none';
-  document.getElementById('scanLine').style.display    = 'none';
+function stopCamera(){
+  scanning=false;ocrBusy=false;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  document.getElementById('camVideo').srcObject=null;
+  document.getElementById('camOffMsg').style.display='flex';
+  document.getElementById('ocrLive').style.display='none';
+  document.getElementById('btnStartCam').style.display='';
+  document.getElementById('btnStopCam').style.display='none';
+  document.getElementById('btnFlipCam').style.display='none';
+  document.getElementById('scanLine').style.display='none';
   document.getElementById('camDot').classList.remove('active');
-  document.getElementById('camStatusTxt').textContent  = 'CÁMARA INACTIVA';
+  document.getElementById('camStatusTxt').textContent='INACTIVA';
 }
 
-function flipCamera() {
-  facingMode = facingMode === 'environment' ? 'user' : 'environment';
-  stopCamera();
-  setTimeout(startCamera, 400); // small delay for iOS to release camera
+function flipCamera(){
+  facingMode=facingMode==='environment'?'user':'environment';
+  stopCamera();setTimeout(startCamera,400);
 }
 
-// ── OCR ENGINE — Tesseract.js ────────────────
-// Lee el serial del billete boliviano directamente de la cámara
-// Extrae solo los 9 primeros dígitos numéricos del texto detectado
-
-let ocrWorker   = null;
-let ocrReady    = false;
-let ocrBusy     = false;
-let frameCount  = 0;
-let cropCanvas  = null;
-let cropCtx     = null;
-
-async function initOCR() {
-  try {
-    document.getElementById('camStatusTxt').textContent = 'CARGANDO OCR...';
-    ocrWorker = await Tesseract.createWorker('eng', 1, {
-      logger: () => {}
-    });
-    // Configure for digit/serial recognition
+async function initOCR(){
+  try{
+    ocrWorker=await Tesseract.createWorker('eng',1,{logger:()=>{}});
     await ocrWorker.setParameters({
-      tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-      tessedit_pageseg_mode: '7',   // single line
-      preserve_interword_spaces: '0',
+      tessedit_char_whitelist:'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+      tessedit_pageseg_mode:'7',
+      preserve_interword_spaces:'0',
     });
-    ocrReady = true;
-    document.getElementById('camStatusTxt').textContent = 'OCR LISTO — ESCANEANDO';
-    console.log('Tesseract OCR ready');
-  } catch(e) {
-    console.error('OCR init error:', e);
-    document.getElementById('camStatusTxt').textContent = 'ERROR OCR: ' + e.message;
+    ocrReady=true;
+    document.getElementById('camStatusTxt').textContent='ESCANEANDO';
+  }catch(e){
+    document.getElementById('camStatusTxt').textContent='ERROR OCR';
   }
 }
 
-function startDecoding() {
-  const video = document.getElementById('camVideo');
-
-  // Offscreen canvas for cropped zone
-  cropCanvas = document.createElement('canvas');
-  cropCtx    = cropCanvas.getContext('2d', { willReadFrequently: true });
-
-  // Init OCR in background
+function startDecoding(){
+  const video=document.getElementById('camVideo');
+  const cc=document.createElement('canvas');
+  const cx=cc.getContext('2d',{willReadFrequently:true});
   initOCR();
-
-  // Scan every 800ms (OCR is slower than barcode)
-  async function ocrLoop() {
-    if (!scanning) return;
-    frameCount++;
-
-    if (!ocrReady || ocrBusy) {
-      setTimeout(ocrLoop, 300);
-      return;
-    }
-    if (video.readyState < 2 || !video.videoWidth) {
-      setTimeout(ocrLoop, 300);
-      return;
-    }
-
-    ocrBusy = true;
-    try {
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-
-      // Crop to reticle zone: center 37.5% wide x 12.5% tall
-      const sx = Math.floor(vw * 0.3125);
-      const sy = Math.floor(vh * 0.4375);
-      const sw = Math.floor(vw * 0.375);
-      const sh = Math.floor(vh * 0.125);
-
-      // Scale up 2x for better OCR accuracy
-      cropCanvas.width  = sw * 2;
-      cropCanvas.height = sh * 2;
-      cropCtx.imageSmoothingEnabled = false;
-
-      // Contrast boost + grayscale before OCR
-      cropCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cropCanvas.width, cropCanvas.height);
-
-      // Apply contrast filter for better number reading
-      cropCtx.filter = 'contrast(180%) brightness(110%) grayscale(100%)';
-      cropCtx.drawImage(cropCanvas, 0, 0);
-      cropCtx.filter = 'none';
-
-      const { data: { text } } = await ocrWorker.recognize(cropCanvas);
-      const raw = text.replace(/\s+/g, '').trim();
-
-      // Show live OCR reading
-      const ocrEl = document.getElementById('ocrLive');
-      if (raw.length > 1) {
-        ocrEl.style.display = 'block';
-        ocrEl.textContent   = raw.slice(0, 30);
+  async function loop(){
+    if(!scanning) return;
+    if(!ocrReady||ocrBusy||video.readyState<2||!video.videoWidth){setTimeout(loop,400);return;}
+    ocrBusy=true;
+    try{
+      const vw=video.videoWidth,vh=video.videoHeight;
+      const sx=Math.floor(vw*0.3125),sy=Math.floor(vh*0.4375);
+      const sw=Math.floor(vw*0.375), sh=Math.floor(vh*0.125);
+      cc.width=sw*3;cc.height=sh*3;
+      cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality='high';
+      cx.drawImage(video,sx,sy,sw,sh,0,0,cc.width,cc.height);
+      cx.filter='contrast(200%) brightness(115%) grayscale(100%)';
+      cx.drawImage(cc,0,0);cx.filter='none';
+      const{data:{text}}=await ocrWorker.recognize(cc);
+      const raw=text.replace(/\s+/g,'').trim();
+      const el=document.getElementById('ocrLive');
+      if(raw.length>0){el.style.display='block';el.textContent=raw.slice(0,28);}
+      if(raw.length>=5){
+        const sm=raw.match(/([A-Z])\d{5,}/i);
+        if(sm) onDetect(sm[0]);
+        else{const dm=raw.match(/\d{5,}/);if(dm) onDetect(dm[0]);}
       }
-
-      // Extract up to 9 consecutive digits from the serial
-      if (raw.length >= 5) {
-        const digitMatch = raw.match(/\d{5,}/);
-        if (digitMatch) {
-          onDetect(digitMatch[0]);
-        }
-      }
-    } catch(e) {
-      console.warn('OCR frame error:', e);
-    }
-    ocrBusy = false;
-    // Repeat every 900ms — fast enough to feel real-time
-    setTimeout(ocrLoop, 900);
+    }catch(e){}
+    ocrBusy=false;
+    setTimeout(loop,800);
   }
-
-  ocrLoop();
+  loop();
 }
 
-
-
-// ── SERIE DETECTION ─────────────────────────
-// Billetes bolivianos: Serie A → siempre fuera de rango (verde)
-//                      Serie B → verificar rango numérico
-function detectSerie(raw) {
-  // Serial format: A1234567B or B9876543C — first letter is the serie
-  const match = raw.match(/^([A-Z])/i);
-  if (!match) return null;
-  return match[1].toUpperCase();
-}
-
-// ── ON DETECT ────────────────────────────────
-function onDetect(rawCode) {
-  const now = Date.now();
-  if (now - lastScan < cooldown) return;
-  lastScan = now;
-
-  if (!activeRange) return;
-
-  const num9  = extract9(rawCode);
-  const serie = detectSerie(rawCode);
-
-  let isOk;
-  let serieLabel = '';
-
-  if (serie === 'A') {
-    // Serie A → siempre FUERA de rango → verde
-    isOk       = true;
-    serieLabel = ' · SERIE A';
-  } else if (serie === 'B') {
-    // Serie B → verificar contra rango seleccionado
-    isOk       = !inRange(num9);
-    serieLabel = ' · SERIE B';
-  } else {
-    // No serie detected → evaluate numerically only
-    isOk = !inRange(num9);
-  }
-
-  beep(isOk ? 'ok' : 'fail');
-  updateStatusDisplay(rawCode, num9, isOk, serieLabel);
+function onDetect(rawCode){
+  const now=Date.now();
+  if(now-lastScan<cooldown) return;
+  lastScan=now;
+  if(!activeDenom) return;
+  const num9=extract9(rawCode);
+  const serie=detectSerie(rawCode);
+  let isOk,serieLabel='';
+  if(serie==='A'){isOk=true;serieLabel=' · SERIE A';}
+  else if(serie==='B'){isOk=!inRange(num9);serieLabel=' · SERIE B';}
+  else{isOk=!inRange(num9);}
+  document.getElementById('lastScanRaw').textContent=rawCode;
+  document.getElementById('lastScanDigits').textContent=num9?'9 digitos: '+num9:'';
+  beep(isOk?'ok':'fail');
+  updateStatus(rawCode,num9,isOk,serieLabel);
   flashScreen(isOk);
   startCooldownBar();
-
-  if (isOk) cntOk++; else cntFail++;
-  document.getElementById('cntOk').textContent   = cntOk;
-  document.getElementById('cntFail').textContent = cntFail;
-
-  if (!failOnly || !isOk) addHistory(rawCode, num9, isOk, serie);
+  if(isOk) cntOk++; else cntFail++;
+  document.getElementById('cntOk').textContent=cntOk;
+  document.getElementById('cntFail').textContent=cntFail;
+  addHistory(rawCode,num9,isOk,serie);
 }
 
-// ── STATUS DISPLAY ────────────────────────────
-function updateStatusDisplay(raw, num9, ok, serieLabel) {
-  const d  = document.getElementById('statusDisplay');
-  const b  = document.getElementById('statusBadge');
-  const sc = document.getElementById('statusCode');
-  const sm = document.getElementById('statusSub');
-  const se = document.getElementById('statusExtracted');
-
-  d.className   = 'status-display ' + (ok ? 'state-ok' : 'state-fail');
-  b.textContent = ok ? '✔' : '✖';
-  sc.textContent = num9 || raw;
-  sm.textContent = ok
-    ? `✔ FUERA DEL RANGO ${activeRange} — PERMITIDO${serieLabel||''}`
-    : `✖ DENTRO DEL RANGO ${activeRange} — BLOQUEADO${serieLabel||''}`;
-
-  if (raw !== num9 && num9) {
-    se.textContent = `Código completo: ${raw}  |  Dígitos leídos: ${num9}`;
-  } else {
-    se.textContent = '';
-  }
-
-  document.getElementById('scanOverlay').className = 'scan-overlay ' + (ok ? 'state-ok' : 'state-fail');
-
-  clearTimeout(window._resetTmr);
-  window._resetTmr = setTimeout(() => {
-    d.className = 'status-display state-idle';
-    b.textContent = '⬡';
-    sc.textContent = 'ESPERANDO ESCANEO';
-    sm.textContent = activeRange
-      ? `Rango ${activeRange}: ${RANGES[activeRange].min.toLocaleString()} → ${RANGES[activeRange].max.toLocaleString()}`
-      : 'Selecciona un rango';
-    se.textContent = '';
-    document.getElementById('scanOverlay').className = 'scan-overlay';
-  }, cooldown + 500);
+function updateStatus(raw,num9,ok,serieLabel){
+  const d=document.getElementById('statusDisplay');
+  const b=document.getElementById('statusBadge');
+  const sc=document.getElementById('statusCode');
+  const sm=document.getElementById('statusSub');
+  const ov=document.getElementById('scanOverlay');
+  d.className='status-display '+(ok?'state-ok':'state-fail');
+  b.textContent=ok?'✔':'✖';
+  sc.textContent=num9||raw;
+  sm.textContent=ok
+    ?'✔ FUERA DE RANGO — PERMITIDO'+(serieLabel||'')
+    :'✖ DENTRO DE RANGO — BLOQUEADO'+(serieLabel||'');
+  ov.className='scan-overlay '+(ok?'scan-ok':'scan-fail');
+  clearTimeout(window._rt);
+  window._rt=setTimeout(()=>{
+    d.className='status-display state-idle';
+    b.textContent='⬡';
+    sc.textContent=activeDenom?DENOMS[activeDenom].label+' — LISTO':'SELECCIONA BILLETE';
+    sm.textContent=activeDenom?'Rango '+DENOMS[activeDenom].rk+': '+DENOMS[activeDenom].min.toLocaleString()+' → '+DENOMS[activeDenom].max.toLocaleString():'Elige 10, 20 o 50 Bs';
+    ov.className='scan-overlay';
+  },cooldown+600);
 }
 
-// ── FLASH ──────────────────────────────────
-function flashScreen(ok) {
-  const el = document.getElementById(ok ? 'flashOk' : 'flashFail');
-  el.classList.remove('do-flash'); void el.offsetWidth;
+function flashScreen(ok){
+  const el=document.getElementById(ok?'flashOk':'flashFail');
+  el.classList.remove('do-flash');void el.offsetWidth;
   el.classList.add('do-flash');
-  setTimeout(() => el.classList.remove('do-flash'), 600);
+  setTimeout(()=>el.classList.remove('do-flash'),550);
 }
 
-// ── COOLDOWN BAR ──────────────────────────
-function startCooldownBar() {
-  const f = document.getElementById('cooldownFill');
-  f.style.transition = 'none'; f.style.width = '100%';
-  setTimeout(() => { f.style.transition = `width ${cooldown}ms linear`; f.style.width = '0%'; }, 30);
+function startCooldownBar(){
+  const f=document.getElementById('cooldownFill');
+  f.style.transition='none';f.style.width='100%';
+  setTimeout(()=>{f.style.transition=`width ${cooldown}ms linear`;f.style.width='0%';},30);
 }
 
-// ── HISTORY ───────────────────────────────
-function addHistory(raw, num9, ok, serie) {
-  const t = new Date().toLocaleTimeString('es', {hour12:false});
-  history.unshift({ raw, num9, ok, t, range: activeRange, serie: serie||'?' });
-  if (history.length > 300) history.pop();
+function addHistory(raw,num9,ok,serie){
+  const t=new Date().toLocaleTimeString('es',{hour12:false});
+  const d=activeDenom?DENOMS[activeDenom]:null;
+  history.unshift({raw,num9,ok,t,denom:activeDenom,color:d?.color,label:d?.label,serie:serie||'?'});
+  if(history.length>300) history.pop();
   renderHistory();
 }
 
-function renderHistory() {
-  const el = document.getElementById('histList');
-  document.getElementById('histCount').textContent = history.length;
-  if (!history.length) { el.innerHTML = '<div class="hist-empty">// Sin registros aún //</div>'; return; }
-  el.innerHTML = history.map(h => {
-    const rc = RANGES[h.range];
-    return `
-    <div class="hist-item ${h.ok ? 'ok' : 'fail'}">
+function renderHistory(){
+  const el=document.getElementById('histList');
+  document.getElementById('histCount').textContent=history.length;
+  if(!history.length){el.innerHTML='<div class="hist-empty">// Sin registros //</div>';return;}
+  el.innerHTML=history.map(h=>`
+    <div class="hist-item ${h.ok?'ok':'fail'}">
       <div class="hist-dot"></div>
-      <div class="hist-code">${esc(h.num9 || h.raw)}</div>
+      <div class="hist-code">${esc(h.num9||h.raw)}</div>
       <div class="hist-meta">
-        <span class="hist-status">${h.ok ? '✔ FUERA' : '✖ EN RANGO'}</span>
-        <span class="hist-range-tag" style="color:${rc ? rc.color : 'var(--dim)'}">Rango ${h.range} · Serie ${h.serie}</span>
+        <span class="hist-status">${h.ok?'✔ OK':'✖ BLOQ'}</span>
+        <span class="hist-tag" style="color:${h.color||'var(--dim)'}"> ${h.label||'?'} S:${h.serie}</span>
         <span class="hist-time">${h.t}</span>
       </div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 }
 
-function clearHistory() {
-  history = []; cntOk = cntFail = 0;
-  document.getElementById('cntOk').textContent   = 0;
-  document.getElementById('cntFail').textContent = 0;
+function clearHistory(){
+  history=[];cntOk=cntFail=0;
+  document.getElementById('cntOk').textContent=0;
+  document.getElementById('cntFail').textContent=0;
   renderHistory();
 }
 
-// ── SETTINGS ──────────────────────────────
-function toggle(key) {
-  if (key === 'sound') {
-    soundOn = !soundOn;
-    document.getElementById('togSound').className = 'toggle' + (soundOn ? ' on' : '');
-  } else if (key === 'failOnly') {
-    failOnly = !failOnly;
-    document.getElementById('togFailOnly').className = 'toggle' + (failOnly ? ' on' : '');
+function manualScan(){
+  const inp=document.getElementById('manualInput');
+  const raw=inp.value.trim();
+  if(!raw){inp.focus();return;}
+  if(!activeDenom){alert('Selecciona primero el billete: 10, 20 o 50 Bs');return;}
+  onDetect(raw);inp.select();
+}
+
+function toggleSheet(name){
+  const map={history:'sheetHistory',config:'sheetConfig'};
+  const btn={history:'togHistory',config:'togConfig'};
+  if(openSheet===name){
+    document.getElementById(map[name]).classList.remove('open');
+    document.getElementById(btn[name]).classList.remove('active');
+    openSheet=null;
+  }else{
+    Object.keys(map).forEach(k=>{
+      document.getElementById(map[k]).classList.remove('open');
+      document.getElementById(btn[k]).classList.remove('active');
+    });
+    document.getElementById(map[name]).classList.add('open');
+    document.getElementById(btn[name]).classList.add('active');
+    openSheet=name;
+    setTimeout(()=>document.getElementById('mainScroll').scrollTop=99999,50);
   }
 }
 
-// ── TABS ──────────────────────────────────
-function switchTab(name) {
-  const names = ['info','history','settings'];
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id==='tab-'+name));
+function toggleSetting(key){
+  if(key==='sound'){
+    soundOn=!soundOn;
+    document.getElementById('togSound').className='toggle'+(soundOn?' on':'');
+  }
 }
 
-// ── MANUAL SCAN ──────────────────────────
-function manualScan() {
-  const inp = document.getElementById("manualInput");
-  const raw = inp.value.trim();
-  if (!raw) { inp.focus(); return; }
-  if (!activeRange) { alert("Selecciona primero un rango (A, B o C)."); return; }
-  onDetect(raw);
-  inp.select();
-}
-
-
-// ── CLEAR ALL ─────────────────────────────
-function clearAll() {
-  if (!confirm('¿Borrar historial y contadores?')) return;
+function clearAll(){
+  if(!confirm('Borrar historial y contadores?')) return;
   clearHistory();
 }
 
-// ── UTILS ─────────────────────────────────
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function esc(s){
+  return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// ── INIT ──────────────────────────────────
 renderHistory();
-
-// Detect browser and show appropriate messages
-(function() {
-  const p = detectPlatform();
-  updateCamOffMessage();
-
-  // Show compat banner for Chrome/Firefox on iOS
-  if (p.isChromeIOS || p.isFirefoxIOS) {
+(function(){
+  const p=detectPlatform();
+  if(p.isChromeIOS||p.isFirefoxIOS){
     document.getElementById('compatBanner').classList.add('show');
+    document.getElementById('btnStartCam').style.display='none';
+    document.getElementById('camOffIco').textContent='⚠️';
+    document.getElementById('camOffTitle').textContent='USA SAFARI EN IPHONE';
   }
-
-  // Auto-select range from URL hash (#A, #B, #C)
-  const hashRange = location.hash.replace('#','').toUpperCase();
-  if (['A','B','C'].includes(hashRange)) selectRange(hashRange);
+  const hash=location.hash.replace('#','').toUpperCase();
+  if(['10','20','50'].includes(hash)) selectDenom(hash);
 })();
-
-
 </script>
+
 <script>
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").then(() => console.log("SW registered")).catch(e => console.log("SW error", e));
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js')
+    .then(()=>console.log('SW ok')).catch(e=>console.log('SW err',e));
 }
 </script>
 </body>
