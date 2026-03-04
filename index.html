@@ -254,10 +254,10 @@ header {
   border-color:var(--blue); border-style:solid; opacity:.7;
   transition:border-color .3s;
 }
-.bracket.tl { top:calc(37.5% - 2px); left:calc(12.5% - 2px);  border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
-.bracket.tr { top:calc(37.5% - 2px); right:calc(12.5% - 2px); border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
-.bracket.bl { bottom:calc(37.5% - 2px); left:calc(12.5% - 2px);  border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
-.bracket.br { bottom:calc(37.5% - 2px); right:calc(12.5% - 2px); border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+.bracket.tl { top:calc(37.5% - 2px); left:calc(31.25% - 2px);  border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
+.bracket.tr { top:calc(37.5% - 2px); right:calc(31.25% - 2px); border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
+.bracket.bl { bottom:calc(37.5% - 2px); left:calc(31.25% - 2px);  border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
+.bracket.br { bottom:calc(37.5% - 2px); right:calc(31.25% - 2px); border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
 .state-ok   .bracket { border-color:var(--green); }
 .state-fail .bracket { border-color:var(--red); }
 
@@ -267,7 +267,7 @@ header {
   100%{ top:62.5%; opacity:0; }
 }
 .scan-line {
-  position:absolute; left:14%; right:14%; height:2px;
+  position:absolute; left:33%; right:33%; height:2px;
   background:linear-gradient(90deg,transparent,var(--blue) 20%,var(--blue) 80%,transparent);
   box-shadow:0 0 10px var(--blue),0 0 20px rgba(0,200,255,.5);
   animation:scanH 1.6s ease-in-out infinite;
@@ -275,32 +275,31 @@ header {
 /* Dark overlay masks outside scan zone */
 .scan-mask-top, .scan-mask-bottom, .scan-mask-left, .scan-mask-right {
   position: absolute;
-  background: rgba(6,8,16,0.72);
+  background: rgba(6,8,16,0.78);
   pointer-events: none;
 }
 .scan-mask-top    { top:0; left:0; right:0; height:37.5%; }
 .scan-mask-bottom { bottom:0; left:0; right:0; height:37.5%; }
-.scan-mask-left   { top:37.5%; bottom:37.5%; left:0; width:12.5%; }
-.scan-mask-right  { top:37.5%; bottom:37.5%; right:0; width:12.5%; }
+.scan-mask-left   { top:37.5%; bottom:37.5%; left:0; width:31.25%; }
+.scan-mask-right  { top:37.5%; bottom:37.5%; right:0; width:31.25%; }
 
 .reticle {
   position:absolute;
   top: 37.5%; bottom: 37.5%;
-  left: 12.5%; right: 12.5%;
-  border: 2px solid rgba(0,200,255,0.7);
-  border-radius: 6px;
-  box-shadow: 0 0 0 1px rgba(0,200,255,0.2), inset 0 0 20px rgba(0,200,255,0.05);
+  left: 31.25%; right: 31.25%;
+  border: 2px solid rgba(0,200,255,0.85);
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px rgba(0,200,255,0.25), inset 0 0 16px rgba(0,200,255,0.06);
 }
-/* label inside reticle */
 .reticle::after {
-  content: 'APUNTA EL SERIAL DEL BILLETE AQUÍ';
+  content: 'SERIAL DEL BILLETE';
   position: absolute;
-  bottom: -22px; left: 50%;
+  bottom: -20px; left: 50%;
   transform: translateX(-50%);
   font-family: 'Orbitron', monospace;
-  font-size: .55rem;
+  font-size: .52rem;
   letter-spacing: .12em;
-  color: rgba(0,200,255,0.6);
+  color: rgba(0,200,255,0.65);
   white-space: nowrap;
 }
 
@@ -1015,10 +1014,10 @@ function startDecoding() {
       const vw = video.videoWidth;
       const vh = video.videoHeight;
 
-      // Crop to reticle zone: center 75% wide x 25% tall
-      const sx = Math.floor(vw * 0.125);
+      // Crop to reticle zone: center 37.5% wide x 25% tall (mitad horizontal)
+      const sx = Math.floor(vw * 0.3125);
       const sy = Math.floor(vh * 0.375);
-      const sw = Math.floor(vw * 0.75);
+      const sw = Math.floor(vw * 0.375);
       const sh = Math.floor(vh * 0.25);
 
       // Scale up 2x for better OCR accuracy
